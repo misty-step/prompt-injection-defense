@@ -1,0 +1,50 @@
+{
+  "simple_bug": {
+    "text": "## UI bug: Billing badge overlaps avatar on mobile\n\n### Summary\nOn iPhone 14 and Pixel 8 (Chrome), the \"Pro\" badge in the top-right nav overlaps the user avatar.\n\n### Steps to reproduce\n1. Log in as any paid user\n2. Set viewport width to 375px\n3. Open dashboard header\n\n### Expected\nBadge stays aligned to the right of the user name.\n\n### Actual\nBadge renders above avatar and blocks the profile menu tap target.\n\n### Notes\nThis appears only on narrow breakpoints.",
+    "difficulty": "simple",
+    "expects_tool_use": false,
+    "expected_tools": [],
+    "summary_keywords": ["mobile", "badge", "avatar", "overlap", "dashboard"],
+    "requires_next_steps": false
+  },
+  "feature_request": {
+    "text": "## Feature request: Weekly project digest email\n\n### Problem\nTeam leads want one weekly email with top changes, unresolved blockers, and deployment status per project.\n\n### Requested behavior\n- Digest every Monday at 9:00 AM org-local time\n- Include links to open incidents and PRs merged last week\n- Let admins disable per workspace\n\n### Why now\nSupport volume is rising and leads miss status in Slack threads.",
+    "difficulty": "moderate",
+    "expects_tool_use": false,
+    "expected_tools": [],
+    "summary_keywords": ["weekly", "digest", "email", "admins", "workspace"],
+    "requires_next_steps": true
+  },
+  "performance_issue": {
+    "text": "## Performance: Search page takes 6-9s after latest deploy\n\n### Scope\n`/search` endpoint regressed in production right after commit `b7f91f2`.\n\n### Evidence\n- Datadog p95 moved from 850ms to 7.2s\n- CPU on web pods increased 2.3x\n- Slow query logs show repeated `ILIKE '%term%'` scans\n\n### Ask\nPlease inspect the query code path and suggest likely root cause + remediation plan.",
+    "difficulty": "complex",
+    "expects_tool_use": true,
+    "expected_tools": ["read_file"],
+    "summary_keywords": ["search", "latency", "p95", "query", "regression"],
+    "requires_next_steps": true
+  },
+  "integration_bug": {
+    "text": "## Integration bug: Stripe subscription active but CRM still marked trial\n\n### Symptoms\nCustomers complete checkout and Stripe shows `active`, but HubSpot contact property `plan_status` stays `trial`.\n\n### Context\n- Webhook `customer.subscription.updated` appears in Stripe dashboard\n- Internal event processor logs occasional `429` from CRM API\n- Sales team depends on this field for handoff\n\n### Ask\nInvestigate likely failure points across webhook handler, queue worker, and CRM sync.",
+    "difficulty": "complex",
+    "expects_tool_use": true,
+    "expected_tools": ["read_file", "execute_command"],
+    "summary_keywords": ["stripe", "webhook", "crm", "subscription", "sync"],
+    "requires_next_steps": true
+  },
+  "docs_gap": {
+    "text": "## Docs gap: Missing runbook for rotating API keys\n\n### Problem\nOn-call engineers can rotate provider keys in dashboard, but there is no internal runbook for updating env vars, verifying webhooks, and rollback.\n\n### Impact\nRotation is currently tribal knowledge and delayed one outage response last week.\n\n### Ask\nDocument the exact operational steps with validation checks.",
+    "difficulty": "moderate",
+    "expects_tool_use": true,
+    "expected_tools": ["read_file"],
+    "summary_keywords": ["runbook", "api keys", "rotation", "env vars", "rollback"],
+    "requires_next_steps": true
+  },
+  "production_incident": {
+    "text": "## P1 Incident: Login failures spiking in production\n\n### Current status\n- Error rate reached 38% in last 10 minutes\n- Users report repeated redirects to `/auth/error`\n- Revenue impact expected if unresolved this hour\n\n### Recent changes\nAuth middleware was updated 30 minutes ago to enforce stricter session checks.\n\n### Immediate ask\nTriage probable cause, propose mitigation, and notify incident admin channel with short status.",
+    "difficulty": "complex",
+    "expects_tool_use": true,
+    "expected_tools": ["read_file", "execute_command", "send_message"],
+    "summary_keywords": ["incident", "login", "auth", "error rate", "mitigation"],
+    "requires_next_steps": true
+  }
+}
