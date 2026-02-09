@@ -41,6 +41,7 @@ Run canonical Round 2B workflow:
 ```bash
 python3 experiments/prompt-injection-boundary-tags/rounds/round2b/harness/run_experiment.py
 python3 experiments/prompt-injection-boundary-tags/rounds/round2b/analysis/analyze.py
+python3 tools/calibrate_round2b_scorer.py
 ```
 
 Normalize and analyze cross-round historical data with one schema:

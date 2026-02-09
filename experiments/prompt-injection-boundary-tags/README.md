@@ -13,6 +13,7 @@ rounds/
   round4/   # single-turn vs multi-turn benchmark
 shared/
   wrapper/  # untrusted CLI output wrapper
+  scoring/  # versioned prompt-injection scorer configs + scorer module
 ```
 
 ## Canonical Commands
@@ -28,6 +29,7 @@ python3 rounds/round2/harness/run_experiment.py
 # Round 2B (recommended baseline)
 python3 rounds/round2b/harness/run_experiment.py
 python3 rounds/round2b/analysis/analyze.py
+python3 ../../tools/calibrate_round2b_scorer.py
 
 # Round 3 defense ablation matrix (simulation by default)
 python3 rounds/round3/harness/run_experiment.py

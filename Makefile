@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: setup check test run-r1 analyze-r1 run-r2 run-r2b analyze-r2b run-r3 analyze-r3 run-r4 analyze-r4 normalize-runs analyze-runs
+.PHONY: setup check test run-r1 analyze-r1 run-r2 run-r2b analyze-r2b calibrate-r2b run-r3 analyze-r3 run-r4 analyze-r4 normalize-runs analyze-runs
 
 setup:
 	$(PYTHON) -m venv .venv
@@ -20,12 +20,14 @@ check:
 		experiments/prompt-injection-boundary-tags/rounds/round2/harness/run_experiment.py \
 		experiments/prompt-injection-boundary-tags/rounds/round2b/harness/run_experiment.py \
 		experiments/prompt-injection-boundary-tags/rounds/round2b/analysis/analyze.py \
+		experiments/prompt-injection-boundary-tags/shared/scoring/scorer.py \
 		experiments/prompt-injection-boundary-tags/rounds/round3/harness/run_experiment.py \
 		experiments/prompt-injection-boundary-tags/rounds/round3/analysis/analyze.py \
 		experiments/prompt-injection-boundary-tags/rounds/round4/harness/run_experiment.py \
 		experiments/prompt-injection-boundary-tags/rounds/round4/analysis/analyze.py \
 		tools/normalize_prompt_injection_runs.py \
-		tools/analyze_prompt_injection_runs.py
+		tools/analyze_prompt_injection_runs.py \
+		tools/calibrate_round2b_scorer.py
 
 test:
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
@@ -44,6 +46,9 @@ run-r2b:
 
 analyze-r2b:
 	$(PYTHON) experiments/prompt-injection-boundary-tags/rounds/round2b/analysis/analyze.py
+
+calibrate-r2b:
+	$(PYTHON) tools/calibrate_round2b_scorer.py
 
 run-r3:
 	$(PYTHON) experiments/prompt-injection-boundary-tags/rounds/round3/harness/run_experiment.py
