@@ -1,0 +1,6 @@
+openrouter/moonshotai/kimi-k2.5
+openrouter/deepseek/deepseek-chat
+openrouter/google/gemini-2.5-flash-preview
+openrouter/x-ai/grok-4.1-fast
+openrouter/zhipu-ai/glm-4.7
+
