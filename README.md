@@ -58,6 +58,25 @@ python3 run_experiment_r2.py
 python3 analyze_r2.py
 ```
 
+## CI Smoke Checks
+
+GitHub Actions workflow: `.github/workflows/ci.yml`
+
+It runs on each pull request and each push to `master`:
+
+- `make check` (compile check for harnesses, analyzers, wrappers, tools)
+- `make check-wrappers` (compat wrapper run-path sanity)
+- `make test` (unit tests)
+- `make smoke-analyze` (analysis smoke run on committed datasets)
+
+Run the same gate locally:
+
+```bash
+make ci-smoke
+```
+
+To block merges on failures, set branch protection to require the `ci-smoke` workflow check.
+
 ## Experiments
 
 | Experiment | Status | Summary |

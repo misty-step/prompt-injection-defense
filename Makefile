@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: setup check test run-r1 analyze-r1 run-r2 run-r2b analyze-r2b calibrate-r2b run-r3 analyze-r3 run-r4 analyze-r4 run-r5 analyze-r5 normalize-runs analyze-runs
+.PHONY: setup check check-wrappers smoke-analyze ci-smoke test run-r1 analyze-r1 run-r2 run-r2b analyze-r2b calibrate-r2b run-r3 analyze-r3 run-r4 analyze-r4 run-r5 analyze-r5 normalize-runs analyze-runs
 
 setup:
 	$(PYTHON) -m venv .venv
@@ -27,9 +27,20 @@ check:
 		experiments/prompt-injection-boundary-tags/rounds/round4/analysis/analyze.py \
 		experiments/prompt-injection-boundary-tags/rounds/round5/harness/run_experiment.py \
 		experiments/prompt-injection-boundary-tags/rounds/round5/analysis/analyze.py \
+		tools/check_compat_wrappers.py \
 		tools/normalize_prompt_injection_runs.py \
 		tools/analyze_prompt_injection_runs.py \
 		tools/calibrate_round2b_scorer.py
+
+check-wrappers:
+	$(PYTHON) tools/check_compat_wrappers.py
+
+smoke-analyze:
+	$(PYTHON) analyze_r2.py
+	$(PYTHON) experiments/prompt-injection-boundary-tags/analyze.py
+	$(PYTHON) tools/analyze_prompt_injection_runs.py
+
+ci-smoke: check check-wrappers test smoke-analyze
 
 test:
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
