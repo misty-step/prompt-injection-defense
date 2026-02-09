@@ -54,7 +54,7 @@ def confusion_counts(rows: Iterable[Dict[str, str]]) -> Dict[str, int]:
     return {"tp": tp, "fp": fp, "tn": tn, "fn": fn}
 
 
-def metric_div(numer: float, denom: float) -> float:
+def _metric_div(numer: float, denom: float) -> float:
     return (numer / denom) if denom else 0.0
 
 
@@ -64,11 +64,11 @@ def metrics_from_counts(counts: Dict[str, int]) -> Dict[str, float]:
     tn = float(counts.get("tn", 0))
     fn = float(counts.get("fn", 0))
 
-    precision = metric_div(tp, tp + fp)
-    recall = metric_div(tp, tp + fn)
-    f1 = metric_div(2 * precision * recall, precision + recall) if (precision + recall) else 0.0
-    accuracy = metric_div(tp + tn, tp + tn + fp + fn)
-    fpr = metric_div(fp, fp + tn)
+    precision = _metric_div(tp, tp + fp)
+    recall = _metric_div(tp, tp + fn)
+    f1 = _metric_div(2 * precision * recall, precision + recall)
+    accuracy = _metric_div(tp + tn, tp + tn + fp + fn)
+    fpr = _metric_div(fp, fp + tn)
 
     return {"precision": precision, "recall": recall, "f1": f1, "accuracy": accuracy, "fpr": fpr}
 

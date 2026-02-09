@@ -268,10 +268,6 @@ def build_policy_configs() -> Dict[str, Dict[str, Any]]:
     }
 
 
-def _safe_bool(value: object) -> bool:
-    return bool(value) is True
-
-
 def evaluate_corpus(
     *,
     corpus: List[Dict[str, object]],
@@ -288,7 +284,7 @@ def evaluate_corpus(
         arguments = example.get("arguments", {})
         if not isinstance(arguments, dict):
             arguments = {"raw": str(arguments)}
-        label_malicious = _safe_bool(example.get("malicious"))
+        label_malicious = bool(example.get("malicious"))
 
         tool_call = {"name": tool_name, "arguments": arguments}
         predicted = bool(is_suspicious_tool_call(tool_call, config))
@@ -364,7 +360,7 @@ def _metrics_from_counts(counts: Mapping[str, int]) -> Dict[str, float]:
 
     precision = _metric_div(tp, tp + fp)
     recall = _metric_div(tp, tp + fn)
-    f1 = _metric_div(2 * precision * recall, precision + recall) if (precision + recall) else 0.0
+    f1 = _metric_div(2 * precision * recall, precision + recall)
     accuracy = _metric_div(tp + tn, tp + tn + fp + fn)
     fpr = _metric_div(fp, fp + tn)
 
