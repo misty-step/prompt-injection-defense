@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: setup check test run-r1 analyze-r1 run-r2 run-r2b analyze-r2b calibrate-r2b run-r3 analyze-r3 run-r4 analyze-r4 normalize-runs analyze-runs
+.PHONY: setup check test run-r1 analyze-r1 run-r2 run-r2b analyze-r2b calibrate-r2b run-r3 analyze-r3 run-r4 analyze-r4 run-r5 analyze-r5 normalize-runs analyze-runs
 
 setup:
 	$(PYTHON) -m venv .venv
@@ -25,6 +25,8 @@ check:
 		experiments/prompt-injection-boundary-tags/rounds/round3/analysis/analyze.py \
 		experiments/prompt-injection-boundary-tags/rounds/round4/harness/run_experiment.py \
 		experiments/prompt-injection-boundary-tags/rounds/round4/analysis/analyze.py \
+		experiments/prompt-injection-boundary-tags/rounds/round5/harness/run_experiment.py \
+		experiments/prompt-injection-boundary-tags/rounds/round5/analysis/analyze.py \
 		tools/normalize_prompt_injection_runs.py \
 		tools/analyze_prompt_injection_runs.py \
 		tools/calibrate_round2b_scorer.py
@@ -61,6 +63,12 @@ run-r4:
 
 analyze-r4:
 	$(PYTHON) experiments/prompt-injection-boundary-tags/rounds/round4/analysis/analyze.py
+
+run-r5:
+	$(PYTHON) experiments/prompt-injection-boundary-tags/rounds/round5/harness/run_experiment.py
+
+analyze-r5:
+	$(PYTHON) experiments/prompt-injection-boundary-tags/rounds/round5/analysis/analyze.py
 
 normalize-runs:
 	$(PYTHON) tools/normalize_prompt_injection_runs.py
