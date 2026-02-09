@@ -1,0 +1,23 @@
+[project]
+name = "laboratory"
+version = "0.1.0"
+description = "Reproducible software-engineering experiment harnesses"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "anthropic>=0.42.0",
+  "openai>=1.40.0",
+  "scipy>=1.10.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

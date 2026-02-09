@@ -1,50 +1,70 @@
 # Laboratory
 
-Misty Step's open science laboratory. Where hypotheses are tested, experiments are run, and knowledge is forged.
+Misty Step's computational laboratory for reproducible software-engineering experiments.
 
 ## Philosophy
 
-We believe in scientific rigor for software engineering. Every claim should be testable. Every experiment should be reproducible. Every result should be documented.
+Every claim should be testable. Every run should be reproducible. Every result should be preserved with context.
 
-**Observe → Hypothesize → Test → Document → Share**
+**Observe -> Hypothesize -> Test -> Document -> Share**
 
-## Structure
+## Repository Structure
 
-```
+```text
 laboratory/
-├── experiments/          # Individual experiments, each self-contained
-│   └── <experiment>/
-│       ├── HYPOTHESIS.md # What we're testing and why
-│       ├── README.md     # Setup, methodology, how to reproduce
-│       ├── results/      # Raw data and outputs
-│       └── report/       # Analysis, findings, papers
-├── tools/                # Shared experiment infrastructure
-├── papers/               # Published findings and write-ups
-└── templates/            # Experiment templates
+├── experiments/
+│   └── prompt-injection-boundary-tags/
+│       ├── rounds/
+│       │   ├── round1/   # baseline (single-model, 72 trials)
+│       │   ├── round2/   # alternate harness (432 trials)
+│       │   ├── round2b/  # realistic harness + analysis (324 trials)
+│       │   └── round3/   # design and next-step plan
+│       └── shared/       # reusable assets (e.g., wrappers)
+├── templates/            # new experiment skeletons
+├── tools/                # shared utilities
+└── papers/               # finalized publications
 ```
 
-## Running an Experiment
+Each round has its own `design.md`, `harness/`, `analysis/` (when present), `data/`, and `report/`.
 
-Each experiment is self-contained in its own directory under `experiments/`. To start a new one:
+## Quick Start
 
-1. Copy `templates/experiment/` to `experiments/<your-experiment-name>/`
-2. Write your `HYPOTHESIS.md` — what you're testing and what you expect
-3. Build your experiment tooling
-4. Run it, collect results
-5. Write up findings in `report/`
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e .
+```
+
+Run canonical Round 2B workflow:
+
+```bash
+python3 experiments/prompt-injection-boundary-tags/rounds/round2b/harness/run_experiment.py
+python3 experiments/prompt-injection-boundary-tags/rounds/round2b/analysis/analyze.py
+```
+
+Normalize and analyze cross-round historical data with one schema:
+
+```bash
+python3 tools/normalize_prompt_injection_runs.py
+python3 tools/analyze_prompt_injection_runs.py
+```
+
+Back-compat entrypoints remain available at repo root:
+
+```bash
+python3 run_experiment_r2.py
+python3 analyze_r2.py
+```
 
 ## Experiments
 
 | Experiment | Status | Summary |
-|-----------|--------|---------|
-| [prompt-injection-boundary-tags](experiments/prompt-injection-boundary-tags/) | Complete (Round 1 & 2) | Does wrapping CLI output in security boundary tags reduce prompt injection success rates against LLM agents? |
+|---|---|---|
+| [prompt-injection-boundary-tags](experiments/prompt-injection-boundary-tags/) | R1-R2 complete, R3 designed | Tests boundary-tagging and defense layering against prompt injection in realistic agent settings. |
 
 ## Contributing
 
-New experiment ideas welcome. File an issue with:
-- **Hypothesis**: What do you want to test?
-- **Why it matters**: What decision does this inform?
-- **Methodology**: How would you test it?
+Open GitHub issues using the experiment or bug templates. Use labels to separate research backlog from codebase defects.
 
 ## License
 

@@ -369,23 +369,22 @@ Phase 4: Analysis
 #### File Structure
 ```
 experiments/prompt-injection-boundary-tags/
-├── EXPERIMENT-round3.md          # This document
-├── run_experiment_round3.py       # Main harness
-├── scoring.py                     # Scoring module (separated for testing)
-├── scoring_calibration.py         # Human vs auto scoring comparison
-├── preflight.py                   # Preflight validation script
-├── analyze_r3.py                  # Statistical analysis
-├── payloads_r3.json              # Generated payloads (cached)
-├── results_r3/
-│   ├── preflight_results.csv
-│   ├── calibration_results.csv
-│   ├── single_turn_results.csv
-│   ├── multi_turn_results.csv
-│   └── cost_summary.json
-└── report/
-    ├── ROUND3-FINDINGS.md
-    ├── PAPER-round3.md
-    └── figures/
+└── rounds/
+    └── round3/
+        ├── design.md                 # This document
+        ├── harness/run_experiment.py # Main harness
+        ├── analysis/analyze.py       # Statistical analysis
+        ├── payloads/payloads.json    # Generated payloads (cached)
+        ├── data/
+        │   ├── preflight_results.csv
+        │   ├── calibration_results.csv
+        │   ├── single_turn_results.csv
+        │   ├── multi_turn_results.csv
+        │   └── cost_summary.json
+        └── report/
+            ├── findings.md
+            ├── paper.md
+            └── figures/
 ```
 
 #### Key Implementation Fixes from Round 2
