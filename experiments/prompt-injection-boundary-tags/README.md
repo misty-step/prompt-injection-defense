@@ -9,7 +9,8 @@ rounds/
   round1/   # baseline harness + paper
   round2/   # alternate realistic harness variant
   round2b/  # canonical realistic harness + analysis
-  round3/   # design for next iteration
+  round3/   # defense-ablation matrix
+  round4/   # single-turn vs multi-turn benchmark
 shared/
   wrapper/  # untrusted CLI output wrapper
 ```
@@ -31,6 +32,10 @@ python3 rounds/round2b/analysis/analyze.py
 # Round 3 defense ablation matrix (simulation by default)
 python3 rounds/round3/harness/run_experiment.py
 python3 rounds/round3/analysis/analyze.py
+
+# Round 4 multi-turn benchmark (simulation by default)
+python3 rounds/round4/harness/run_experiment.py
+python3 rounds/round4/analysis/analyze.py
 
 # Cross-round canonical analysis
 python3 ../../tools/normalize_prompt_injection_runs.py

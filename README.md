@@ -18,7 +18,8 @@ laboratory/
 │       │   ├── round1/   # baseline (single-model, 72 trials)
 │       │   ├── round2/   # alternate harness (432 trials)
 │       │   ├── round2b/  # realistic harness + analysis (324 trials)
-│       │   └── round3/   # design and next-step plan
+│       │   ├── round3/   # defense-ablation matrix
+│       │   └── round4/   # single-turn vs multi-turn benchmark
 │       └── shared/       # reusable assets (e.g., wrappers)
 ├── templates/            # new experiment skeletons
 ├── tools/                # shared utilities
@@ -60,7 +61,7 @@ python3 analyze_r2.py
 
 | Experiment | Status | Summary |
 |---|---|---|
-| [prompt-injection-boundary-tags](experiments/prompt-injection-boundary-tags/) | R1-R2 complete, R3 designed | Tests boundary-tagging and defense layering against prompt injection in realistic agent settings. |
+| [prompt-injection-boundary-tags](experiments/prompt-injection-boundary-tags/) | R1-R4 implemented | Tests boundary-tagging, defense layering, and multi-turn escalation risk in realistic agent workflows. |
 
 ## Contributing
 

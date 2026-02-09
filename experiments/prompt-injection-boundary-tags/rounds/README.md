@@ -6,6 +6,7 @@
 | `round2` | Alternate realistic harness with different condition design | `round2/data/results-round2.csv` | 432 trials, includes GPT-5.2 API failure cases. |
 | `round2b` | Canonical realistic harness and analysis | `round2b/data/results_r2_combined_latest.csv` | 324 successful trials across 3 models. |
 | `round3` | Defense-ablation harness and analysis | `round3/data/ablation_results_latest.csv` | Five-condition ablation matrix (`raw`, `tags_only`, `instruction_only`, `instruction_tags`, `full_stack`). |
+| `round4` | Single-turn vs multi-turn context-poisoning benchmark | `round4/data/multiturn_results_latest.csv` | 3-turn escalation protocol (`benign -> subtle -> explicit`) over top-4 payload categories. |
 | `canonical` | Schema-normalized cross-round dataset | `canonical/runs_v1.csv` | Unified `prompt_injection_run_v1` format for aggregate analysis. |
 
 ## Invariants
