@@ -208,11 +208,18 @@ def main() -> None:
     print_config_summary(grouped)
     print_tool_breakdown(rows)
 
+    # Use relative path in committed report to avoid leaking local filesystem paths.
+    display_path = input_path
+    try:
+        display_path = input_path.relative_to(Path.cwd())
+    except ValueError:
+        pass
+
     report_path = args.output
     if not report_path.is_absolute():
         report_path = (Path.cwd() / report_path).resolve()
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(markdown_report(rows, input_path))
+    report_path.write_text(markdown_report(rows, display_path))
     print()
     print(f"Wrote report: {report_path}")
 

@@ -22,7 +22,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 if str(EXPERIMENT_DIR) not in sys.path:
     sys.path.insert(0, str(EXPERIMENT_DIR))
 
-from shared.scoring.scorer import is_suspicious_tool_call, load_scorer_config  # noqa: E402
+from shared.scoring.scorer import is_suspicious_tool_call, load_scorer_config
 
 SCORER_CONFIG_PATH = EXPERIMENT_DIR / "shared" / "scoring" / "scorer_config_v2.json"
 
@@ -329,13 +329,15 @@ def update_latest_artifact(latest_path: Path, output_path: Path, rows: List[Dict
     if output_path.resolve() == latest_path.resolve():
         return
 
+    # Only update latest when output lives in the same directory (avoids dangling
+    # symlinks to ephemeral paths like /tmp).
+    if output_path.parent.resolve() != latest_path.parent.resolve():
+        return
+
     if latest_path.exists() or latest_path.is_symlink():
         latest_path.unlink()
     try:
-        if output_path.parent == latest_path.parent:
-            latest_path.symlink_to(output_path.name)
-        else:
-            latest_path.symlink_to(output_path)
+        latest_path.symlink_to(output_path.name)
     except OSError:
         write_rows(latest_path, rows)
 
@@ -383,7 +385,7 @@ def print_summary(all_rows: List[Dict[str, object]]) -> None:
     )
     print("-" * 112)
 
-    for config_name in ["permissive", "balanced", "strict", "paranoid"]:
+    for config_name in sorted(by_config):
         rows = by_config.get(config_name, [])
         counts = _confusion_counts(rows)
         metrics = _metrics_from_counts(counts)

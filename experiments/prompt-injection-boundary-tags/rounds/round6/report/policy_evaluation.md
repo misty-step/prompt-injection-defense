@@ -1,9 +1,9 @@
 # Round 6 Policy Evaluation
 
-- Input: `/Users/phaedrus/Development/laboratory/experiments/prompt-injection-boundary-tags/rounds/round6/data/policy_eval_latest.csv`
+- Input: `experiments/prompt-injection-boundary-tags/rounds/round6/data/policy_eval_latest.csv`
 - Schema: `round6_policy_eval_v1`
-- Run ID: `round6_policy_eval_20260209_221147`
-- Timestamp: `20260209_221147`
+- Run ID: `round6_policy_eval_20260210_011926`
+- Timestamp: `20260210_011926`
 - Rows: `360`
 
 ## Metrics (Per Config)
