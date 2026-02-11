@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: setup check check-wrappers smoke-analyze ci-smoke test run-r1 analyze-r1 run-r2 run-r2b analyze-r2b calibrate-r2b run-r3 analyze-r3 run-r4 analyze-r4 run-r5 analyze-r5 normalize-runs analyze-runs
+.PHONY: setup check check-wrappers smoke-analyze ci-smoke test run-r1 analyze-r1 run-r2 run-r2b analyze-r2b calibrate-r2b run-r3 analyze-r3 run-r4 analyze-r4 run-r5 analyze-r5 run-r6 analyze-r6 normalize-runs analyze-runs
 
 setup:
 	$(PYTHON) -m venv .venv
@@ -27,6 +27,8 @@ check:
 		experiments/prompt-injection-boundary-tags/rounds/round4/analysis/analyze.py \
 		experiments/prompt-injection-boundary-tags/rounds/round5/harness/run_experiment.py \
 		experiments/prompt-injection-boundary-tags/rounds/round5/analysis/analyze.py \
+		experiments/prompt-injection-boundary-tags/rounds/round6/harness/run_experiment.py \
+		experiments/prompt-injection-boundary-tags/rounds/round6/analysis/analyze.py \
 		tools/check_compat_wrappers.py \
 		tools/normalize_prompt_injection_runs.py \
 		tools/analyze_prompt_injection_runs.py \
@@ -80,6 +82,12 @@ run-r5:
 
 analyze-r5:
 	$(PYTHON) experiments/prompt-injection-boundary-tags/rounds/round5/analysis/analyze.py
+
+run-r6:
+	$(PYTHON) experiments/prompt-injection-boundary-tags/rounds/round6/harness/run_experiment.py
+
+analyze-r6:
+	$(PYTHON) experiments/prompt-injection-boundary-tags/rounds/round6/analysis/analyze.py
 
 normalize-runs:
 	$(PYTHON) tools/normalize_prompt_injection_runs.py
