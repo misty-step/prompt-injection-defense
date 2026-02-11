@@ -20,6 +20,9 @@ laboratory/
 │       │   ├── round2b/  # realistic harness + analysis (324 trials)
 │       │   ├── round3/   # defense-ablation matrix
 │       │   └── round4/   # single-turn vs multi-turn benchmark
+│       │   ├── round5/   # security vs utility tradeoff
+│       │   ├── round6/   # tool-call policy gate eval
+│       │   └── round7/   # cross-model defense validation
 │       └── shared/       # reusable assets (e.g., wrappers)
 ├── templates/            # new experiment skeletons
 ├── tools/                # shared utilities
@@ -81,7 +84,7 @@ To block merges on failures, set branch protection to require the `ci-smoke` wor
 
 | Experiment | Status | Summary |
 |---|---|---|
-| [prompt-injection-boundary-tags](experiments/prompt-injection-boundary-tags/) | R1-R4 implemented | Tests boundary-tagging, defense layering, and multi-turn escalation risk in realistic agent workflows. |
+| [prompt-injection-boundary-tags](experiments/prompt-injection-boundary-tags/) | R1-R7 implemented | Tests boundary-tagging, defense layering, multi-turn escalation risk, policy filtering, and cross-model defense validation. |
 
 ## Contributing
 

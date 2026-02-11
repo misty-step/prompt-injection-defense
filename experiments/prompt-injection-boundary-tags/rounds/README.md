@@ -9,6 +9,7 @@
 | `round4` | Single-turn vs multi-turn context-poisoning benchmark | `round4/data/multiturn_results_latest.csv` | 3-turn escalation protocol (`benign -> subtle -> explicit`) over top-4 payload categories. |
 | `round5` | Security vs utility tradeoff benchmark | `round5/data/tradeoff_results_latest.csv` | Dual-metric frontier: injection rate vs benign-task utility. |
 | `round6` | Tool-call policy gate precision/recall eval | `round6/data/policy_eval_latest.csv` | Offline labeled corpus across 4 scorer policy configs. |
+| `round7` | Cross-model defense validation benchmark | `round7/data/cross_model_results_latest.csv` | 9-model defense-ablation matrix with optional reasoning-budget axis. |
 | `canonical` | Schema-normalized cross-round dataset | `canonical/runs_v1.csv` | Unified `prompt_injection_run_v1` format for aggregate analysis. |
 
 ## Invariants

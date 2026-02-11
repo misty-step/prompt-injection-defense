@@ -30,6 +30,7 @@ python3 -m unittest tests/test_shared_scorer.py
 
 # Run a specific round (harness then analysis)
 make run-r5 && make analyze-r5
+make run-r7 && make analyze-r7
 
 # Cross-round analysis
 make normalize-runs && make analyze-runs
@@ -45,7 +46,7 @@ make analyze-opencode  # aggregate results into markdown table
 
 ```
 experiments/prompt-injection-boundary-tags/
-  rounds/round{1,2,2b,3,4,5,6}/ # each round is isolated
+  rounds/round{1,2,2b,3,4,5,6,7}/ # each round is isolated
     design.md                     # hypothesis + methodology
     harness/run_experiment.py     # trial runner (--simulate default, --live for API)
     analysis/analyze.py           # reads data/, produces report/
