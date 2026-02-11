@@ -30,29 +30,49 @@ class Round7HarnessTests(unittest.TestCase):
         self.assertEqual(values, ["gpt-5.2", "gemini-3-flash"])
 
     def test_projected_cost_scales_with_trial_count(self) -> None:
-        pairs = [("gpt-5.2", "low"), ("gpt-5.2", "high")]
-        c1 = round7.projected_cost_usd(
-            model_budget_pairs=pairs,
-            payload_count=1,
-            conditions_count=1,
-            trials=1,
+        settings = round7.BudgetSettings(
             estimate_input_tokens=1000,
             estimate_output_tokens=100,
         )
-        c2 = round7.projected_cost_usd(
-            model_budget_pairs=pairs,
-            payload_count=1,
-            conditions_count=1,
-            trials=2,
-            estimate_input_tokens=1000,
-            estimate_output_tokens=100,
-        )
+        c1 = round7.BudgetController(
+            settings=settings,
+            estimate_cost_usd=round7.estimate_cost_usd,
+            run_id="r1",
+            timestamp="t",
+            mode="simulate",
+            planned_trial_models=["gpt-5.2", "gpt-5.2"],
+            default_report_path=round7.DATA_DIR / "budget_tmp1.json",
+        ).projected_total_cost_usd
+        c2 = round7.BudgetController(
+            settings=settings,
+            estimate_cost_usd=round7.estimate_cost_usd,
+            run_id="r2",
+            timestamp="t",
+            mode="simulate",
+            planned_trial_models=["gpt-5.2", "gpt-5.2", "gpt-5.2", "gpt-5.2"],
+            default_report_path=round7.DATA_DIR / "budget_tmp2.json",
+        ).projected_total_cost_usd
         self.assertAlmostEqual(c2, c1 * 2, places=8)
 
     def test_should_stop_before_trial(self) -> None:
-        self.assertTrue(round7.should_stop_before_trial(9.8, 0.3, 10.0))
-        self.assertFalse(round7.should_stop_before_trial(9.6, 0.3, 10.0))
-        self.assertFalse(round7.should_stop_before_trial(100.0, 1.0, 0.0))
+        settings = round7.BudgetSettings(
+            max_cost_usd=0.01,
+            guard_input_tokens=1000,
+            guard_output_tokens=200,
+        )
+        controller = round7.BudgetController(
+            settings=settings,
+            estimate_cost_usd=round7.estimate_cost_usd,
+            run_id="r",
+            timestamp="t",
+            mode="simulate",
+            planned_trial_models=["gpt-5.2"],
+            default_report_path=round7.DATA_DIR / "budget_tmp3.json",
+        )
+        controller.spent_cost_usd = 0.009
+        self.assertIsNotNone(controller.before_trial_message("gpt-5.2"))
+        controller.spent_cost_usd = 0.0
+        self.assertIsNone(controller.before_trial_message("gpt-5.2"))
 
     def test_wrap_issue_content_full_stack_uses_matching_nonce(self) -> None:
         wrapped = round7.wrap_issue_content("issue body", "full_stack", random.Random(7))

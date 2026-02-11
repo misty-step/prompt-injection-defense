@@ -20,11 +20,17 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True)
 
 ROUND_DIR = Path(__file__).resolve().parent.parent
+EXPERIMENT_DIR = ROUND_DIR.parent.parent
 DATA_DIR = ROUND_DIR / "data"
 PAYLOAD_PATH = ROUND_DIR.parent / "round2b" / "payloads" / "payloads.json"
 BENIGN_ISSUES_PATH = ROUND_DIR / "benign_issues" / "issues.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+if str(EXPERIMENT_DIR) not in sys.path:
+    sys.path.insert(0, str(EXPERIMENT_DIR))
+
+from shared.budget.controller import BudgetController, add_budget_cli_args, settings_from_args
 
 SCHEMA_VERSION = "round5_tradeoff_v1"
 ROUND_ID = "round5"
@@ -1190,6 +1196,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use live model APIs.",
     )
+    add_budget_cli_args(parser)
     return parser.parse_args()
 
 
@@ -1218,10 +1225,37 @@ def run() -> None:
     run_id = f"round5_tradeoff_{timestamp}"
     output_path = args.output or (DATA_DIR / f"tradeoff_results_{timestamp}.csv")
     latest_path = DATA_DIR / "tradeoff_results_latest.csv"
+    budget_default_report_path = DATA_DIR / f"budget_summary_{timestamp}.json"
 
     injection_total = len(selected_models) * len(payload_items) * len(CONDITIONS) * args.trials
     utility_total = len(selected_models) * len(benign_issue_items) * len(CONDITIONS) * args.utility_trials
-    total = injection_total + utility_total
+    trial_plan: List[Tuple[str, str, str, object, str, int]] = []
+    for model_name in selected_models:
+        for payload_name, payload_text in payload_items:
+            for condition in CONDITIONS:
+                for trial_num in range(1, args.trials + 1):
+                    trial_plan.append(
+                        ("injection", model_name, payload_name, payload_text, condition, trial_num)
+                    )
+
+    for model_name in selected_models:
+        for issue_name, issue_definition in benign_issue_items:
+            for condition in CONDITIONS:
+                for trial_num in range(1, args.utility_trials + 1):
+                    trial_plan.append(
+                        ("utility", model_name, issue_name, issue_definition, condition, trial_num)
+                    )
+
+    total = len(trial_plan)
+    budget = BudgetController(
+        settings=settings_from_args(args),
+        estimate_cost_usd=estimate_cost_usd,
+        run_id=run_id,
+        timestamp=timestamp,
+        mode=mode,
+        planned_trial_models=[model_name for _tt, model_name, *_rest in trial_plan],
+        default_report_path=budget_default_report_path,
+    )
 
     print(f"Starting round5 tradeoff benchmark: mode={mode}, total_trials={total}")
     print(f"Models: {', '.join(selected_models)}")
@@ -1233,100 +1267,115 @@ def run() -> None:
         f"Utility trials: {utility_total} | benign_issues={len(benign_issue_items)} "
         f"conditions={len(CONDITIONS)} trials={args.utility_trials}"
     )
+    print(
+        "Budget plan: "
+        f"projected=${budget.projected_total_cost_usd:.2f} "
+        f"(estimate_tokens_in={budget.settings.estimate_input_tokens}, "
+        f"estimate_tokens_out={budget.settings.estimate_output_tokens})"
+    )
+    if budget.settings.max_cost_usd > 0:
+        print(f"Budget cap (run): ${budget.settings.max_cost_usd:.2f} mode={budget.settings.mode}")
+    if budget.settings.max_cost_per_trial_usd > 0:
+        print(
+            "Budget cap (per trial guard): "
+            f"${budget.settings.max_cost_per_trial_usd:.4f} mode={budget.settings.mode}"
+        )
+
+    preflight_message = budget.preflight_message()
+    if preflight_message:
+        if budget.settings.mode == "hard":
+            report_path = budget.write_report(completed_trials=0, stop_reason=preflight_message)
+            if report_path:
+                print(f"Wrote budget report: {report_path}")
+            raise SystemExit(preflight_message)
+        print(f"WARNING: {preflight_message}")
 
     rows: List[Dict[str, object]] = []
-    trial_id = 0
+    completed_trials = 0
+    budget_stop_reason = ""
 
-    for model_name in selected_models:
-        for payload_name, payload_text in payload_items:
-            for condition in CONDITIONS:
-                for trial_num in range(1, args.trials + 1):
-                    trial_id += 1
-                    trial_rng = random.Random((args.seed * 10_000) + trial_id)
-                    user_message = build_user_message(payload_text, condition, trial_rng)
-                    system_prompt = build_system_prompt(condition)
+    for trial_id, (trial_type, model_name, item_name, item_value, condition, trial_num) in enumerate(
+        trial_plan, start=1
+    ):
+        before_trial_message = budget.before_trial_message(model_name)
+        if before_trial_message:
+            if budget.settings.mode == "hard":
+                budget_stop_reason = before_trial_message
+                print(f"Budget stop: {before_trial_message}")
+                break
+            print(f"WARNING: {before_trial_message}")
 
-                    trial_result = run_injection_trial(
-                        mode=mode,
-                        model_name=model_name,
-                        payload_name=payload_name,
-                        condition=condition,
-                        user_message=user_message,
-                        system_prompt=system_prompt,
-                        trial_rng=trial_rng,
-                        sleep_ms=args.sleep_ms,
-                    )
+        trial_rng = random.Random((args.seed * 10_000) + trial_id)
+        system_prompt = build_system_prompt(condition)
 
-                    row = build_row(
-                        run_id=run_id,
-                        timestamp=timestamp,
-                        mode=mode,
-                        trial_id=trial_id,
-                        trial_type="injection",
-                        model_name=model_name,
-                        payload_name=payload_name,
-                        condition=condition,
-                        trial_num=trial_num,
-                        trial_result=trial_result,
-                    )
-                    rows.append(row)
+        if trial_type == "injection":
+            payload_name = item_name
+            payload_text = str(item_value)
+            user_message = build_user_message(payload_text, condition, trial_rng)
+            trial_result = run_injection_trial(
+                mode=mode,
+                model_name=model_name,
+                payload_name=payload_name,
+                condition=condition,
+                user_message=user_message,
+                system_prompt=system_prompt,
+                trial_rng=trial_rng,
+                sleep_ms=args.sleep_ms,
+            )
+            icon_metric = int(trial_result["score"])
+            icon = ["S0", "S1", "S2", "S3"][max(0, min(3, icon_metric))] if str(
+                trial_result["status"]
+            ) == "ok" else "ERR"
+            phase = "injection"
+        else:
+            issue_name = item_name
+            issue_definition = item_value
+            if not isinstance(issue_definition, dict):
+                raise SystemExit(f"Invalid issue definition for {issue_name}")
+            user_message = build_utility_message(issue_name, issue_definition, condition, trial_rng)
+            trial_result = run_utility_trial(
+                mode=mode,
+                model_name=model_name,
+                issue_name=issue_name,
+                issue_definition=issue_definition,
+                condition=condition,
+                user_message=user_message,
+                system_prompt=system_prompt,
+                trial_rng=trial_rng,
+                sleep_ms=args.sleep_ms,
+            )
+            icon_metric = int(trial_result["utility_score"])
+            icon = f"U{max(0, min(3, icon_metric))}" if str(trial_result["status"]) == "ok" else "ERR"
+            phase = "utility  "
 
-                    status = str(trial_result["status"])
-                    score = int(trial_result["score"])
-                    if status == "ok":
-                        icon = ["S0", "S1", "S2", "S3"][max(0, min(3, score))]
-                    else:
-                        icon = "ERR"
-                    print(
-                        f"[{trial_id:>4}/{total}] {model_name:17s} {payload_name:20s} "
-                        f"{condition:17s} injection t{trial_num} {icon}"
-                    )
+        row = build_row(
+            run_id=run_id,
+            timestamp=timestamp,
+            mode=mode,
+            trial_id=trial_id,
+            trial_type=trial_type,
+            model_name=model_name,
+            payload_name=item_name,
+            condition=condition,
+            trial_num=trial_num,
+            trial_result=trial_result,
+        )
+        rows.append(row)
+        completed_trials += 1
+        budget.record_trial(
+            model_name=model_name,
+            input_tokens=int(trial_result["input_tokens"]),
+            output_tokens=int(trial_result["output_tokens"]),
+        )
 
-    for model_name in selected_models:
-        for issue_name, issue_definition in benign_issue_items:
-            for condition in CONDITIONS:
-                for trial_num in range(1, args.utility_trials + 1):
-                    trial_id += 1
-                    trial_rng = random.Random((args.seed * 10_000) + trial_id)
-                    user_message = build_utility_message(issue_name, issue_definition, condition, trial_rng)
-                    system_prompt = build_system_prompt(condition)
+        budget_text = budget.budget_progress_text() if budget.settings.max_cost_usd > 0 else ""
+        print(
+            f"[{trial_id:>4}/{total}] {model_name:17s} {item_name:20s} "
+            f"{condition:17s} {phase} t{trial_num} {icon}{budget_text}"
+        )
 
-                    trial_result = run_utility_trial(
-                        mode=mode,
-                        model_name=model_name,
-                        issue_name=issue_name,
-                        issue_definition=issue_definition,
-                        condition=condition,
-                        user_message=user_message,
-                        system_prompt=system_prompt,
-                        trial_rng=trial_rng,
-                        sleep_ms=args.sleep_ms,
-                    )
-
-                    row = build_row(
-                        run_id=run_id,
-                        timestamp=timestamp,
-                        mode=mode,
-                        trial_id=trial_id,
-                        trial_type="utility",
-                        model_name=model_name,
-                        payload_name=issue_name,
-                        condition=condition,
-                        trial_num=trial_num,
-                        trial_result=trial_result,
-                    )
-                    rows.append(row)
-
-                    status = str(trial_result["status"])
-                    utility_score = int(trial_result["utility_score"])
-                    if status == "ok":
-                        icon = f"U{max(0, min(3, utility_score))}"
-                    else:
-                        icon = "ERR"
-                    print(
-                        f"[{trial_id:>4}/{total}] {model_name:17s} {issue_name:20s} "
-                        f"{condition:17s} utility   t{trial_num} {icon}"
-                    )
+    if not rows:
+        raise SystemExit("No trials executed; budget guard stopped run before first trial.")
 
     write_rows(output_path, rows)
     update_latest_artifact(latest_path, output_path, rows)
@@ -1337,6 +1386,16 @@ def run() -> None:
         print(f"Updated latest: {latest_path} -> {target}")
     else:
         print(f"Updated latest: {latest_path}")
+    print(
+        f"Budget summary: spent=${budget.spent_cost_usd:.2f}, "
+        f"projected=${budget.projected_total_cost_usd:.2f}, "
+        f"completed={completed_trials}/{total}"
+    )
+    if budget_stop_reason:
+        print(f"Budget stop reason: {budget_stop_reason}")
+    report_path = budget.write_report(completed_trials=completed_trials, stop_reason=budget_stop_reason)
+    if report_path:
+        print(f"Wrote budget report: {report_path}")
     summarize(rows)
 
 

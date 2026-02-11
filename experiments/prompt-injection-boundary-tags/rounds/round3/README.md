@@ -30,6 +30,12 @@ Useful flags:
 python3 harness/run_experiment.py --trials 5 --payload-limit 12 --models "claude-sonnet-4,claude-haiku-3.5,gpt-4o,kimi-k2.5"
 ```
 
+Budget controls:
+
+```bash
+python3 harness/run_experiment.py --live --max-cost-usd 5 --budget-mode hard --budget-report data/budget_report.json
+```
+
 ## Analyze
 
 ```bash

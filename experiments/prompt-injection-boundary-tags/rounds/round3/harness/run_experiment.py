@@ -19,10 +19,16 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True)
 
 ROUND_DIR = Path(__file__).resolve().parent.parent
+EXPERIMENT_DIR = ROUND_DIR.parent.parent
 DATA_DIR = ROUND_DIR / "data"
 PAYLOAD_PATH = ROUND_DIR.parent / "round2b" / "payloads" / "payloads.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+if str(EXPERIMENT_DIR) not in sys.path:
+    sys.path.insert(0, str(EXPERIMENT_DIR))
+
+from shared.budget.controller import BudgetController, add_budget_cli_args, settings_from_args
 
 SCHEMA_VERSION = "round3_ablation_v1"
 ROUND_ID = "round3"
@@ -628,6 +634,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use live model APIs. Default is simulation mode.",
     )
+    add_budget_cli_args(parser)
     return parser.parse_args()
 
 
@@ -649,111 +656,172 @@ def run() -> None:
     run_id = f"round3_ablation_{timestamp}"
     output_path = args.output or (DATA_DIR / f"ablation_results_{timestamp}.csv")
     latest_path = DATA_DIR / "ablation_results_latest.csv"
+    budget_default_report_path = DATA_DIR / f"budget_summary_{timestamp}.json"
 
-    rng = random.Random(args.seed)
-
-    total = len(selected_models) * len(payload_items) * len(CONDITIONS) * args.trials
-    print(f"Starting round3 ablation: mode={mode}, trials={total}")
-    print(f"Models: {', '.join(selected_models)}")
-    print(f"Payloads: {len(payload_items)} | Conditions: {len(CONDITIONS)} | Trials per combo: {args.trials}")
-
-    rows: List[Dict[str, object]] = []
-    trial_id = 0
-
+    trial_plan: List[Tuple[str, str, str, str, int]] = []
     for model_name in selected_models:
         for payload_name, payload_text in payload_items:
             for condition in CONDITIONS:
                 for trial_num in range(1, args.trials + 1):
-                    trial_id += 1
-                    trial_rng = random.Random((args.seed * 10_000) + trial_id)
-                    user_message = build_user_message(payload_text, condition, trial_rng)
-                    system_prompt = build_system_prompt(condition)
+                    trial_plan.append((model_name, payload_name, payload_text, condition, trial_num))
 
-                    if mode == "simulate":
-                        simulated = simulate_trial(
-                            rng=trial_rng,
-                            model_name=model_name,
-                            payload_name=payload_name,
-                            condition=condition,
-                        )
-                        status = str(simulated["status"])
-                        error = str(simulated["error"])
-                        score = int(simulated["score"])
-                        response_text = str(simulated["response_text"])
-                        raw_tool_calls = list(simulated["raw_tool_calls"])
-                        effective_tool_calls = list(simulated["effective_tool_calls"])
-                        blocked_tool_calls = list(simulated["blocked_tool_calls"])
-                        input_tokens = int(simulated["input_tokens"])
-                        output_tokens = int(simulated["output_tokens"])
-                        model_id = str(MODELS[model_name]["model_ids"][0])
-                    else:
-                        try:
-                            live = call_live_model(model_name, system_prompt, user_message)
-                            raw_tool_calls = list(live["raw_tool_calls"])
-                            if condition == "full_stack":
-                                effective_tool_calls, blocked_tool_calls = apply_full_stack_policy(raw_tool_calls)
-                            else:
-                                effective_tool_calls = raw_tool_calls
-                                blocked_tool_calls = []
+    total = len(trial_plan)
+    budget = BudgetController(
+        settings=settings_from_args(args),
+        estimate_cost_usd=estimate_cost_usd,
+        run_id=run_id,
+        timestamp=timestamp,
+        mode=mode,
+        planned_trial_models=[model_name for model_name, *_rest in trial_plan],
+        default_report_path=budget_default_report_path,
+    )
 
-                            response_text = str(live["response_text"])
-                            score = auto_score(response_text, effective_tool_calls)
-                            status = "ok"
-                            error = ""
-                            input_tokens = int(live["input_tokens"])
-                            output_tokens = int(live["output_tokens"])
-                            model_id = str(live["model_id"])
-                        except Exception as err:  # pragma: no cover - live path
-                            status = "error"
-                            error = str(err)
-                            score = -1
-                            response_text = f"ERROR: {err}"
-                            raw_tool_calls = []
-                            effective_tool_calls = []
-                            blocked_tool_calls = []
-                            input_tokens = 0
-                            output_tokens = 0
-                            model_id = ""
+    print(f"Starting round3 ablation: mode={mode}, trials={total}")
+    print(f"Models: {', '.join(selected_models)}")
+    print(f"Payloads: {len(payload_items)} | Conditions: {len(CONDITIONS)} | Trials per combo: {args.trials}")
+    print(
+        "Budget plan: "
+        f"projected=${budget.projected_total_cost_usd:.2f} "
+        f"(estimate_tokens_in={budget.settings.estimate_input_tokens}, "
+        f"estimate_tokens_out={budget.settings.estimate_output_tokens})"
+    )
+    if budget.settings.max_cost_usd > 0:
+        print(f"Budget cap (run): ${budget.settings.max_cost_usd:.2f} mode={budget.settings.mode}")
+    if budget.settings.max_cost_per_trial_usd > 0:
+        print(
+            "Budget cap (per trial guard): "
+            f"${budget.settings.max_cost_per_trial_usd:.4f} mode={budget.settings.mode}"
+        )
 
-                        if args.sleep_ms > 0:
-                            time.sleep(args.sleep_ms / 1000)
+    preflight_message = budget.preflight_message()
+    if preflight_message:
+        if budget.settings.mode == "hard":
+            report_path = budget.write_report(completed_trials=0, stop_reason=preflight_message)
+            if report_path:
+                print(f"Wrote budget report: {report_path}")
+            raise SystemExit(preflight_message)
+        print(f"WARNING: {preflight_message}")
 
-                    row = build_row(
-                        run_id=run_id,
-                        timestamp=timestamp,
-                        mode=mode,
-                        trial_id=trial_id,
-                        model_name=model_name,
-                        model_id=model_id,
-                        payload_name=payload_name,
-                        condition=condition,
-                        trial_num=trial_num,
-                        status=status,
-                        error=error,
-                        score=score,
-                        response_text=response_text,
-                        raw_tool_calls=raw_tool_calls,
-                        effective_tool_calls=effective_tool_calls,
-                        blocked_tool_calls=blocked_tool_calls,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                    )
-                    rows.append(row)
+    rows: List[Dict[str, object]] = []
+    completed_trials = 0
+    budget_stop_reason = ""
 
-                    if status == "ok":
-                        icon = ["S0", "S1", "S2", "S3"][max(0, min(3, score))]
-                    else:
-                        icon = "ERR"
-                    print(
-                        f"[{trial_id:>4}/{total}] {model_name:17s} {payload_name:20s} "
-                        f"{condition:17s} t{trial_num} {icon}"
-                    )
+    for trial_id, (model_name, payload_name, payload_text, condition, trial_num) in enumerate(
+        trial_plan, start=1
+    ):
+        before_trial_message = budget.before_trial_message(model_name)
+        if before_trial_message:
+            if budget.settings.mode == "hard":
+                budget_stop_reason = before_trial_message
+                print(f"Budget stop: {before_trial_message}")
+                break
+            print(f"WARNING: {before_trial_message}")
+
+        trial_rng = random.Random((args.seed * 10_000) + trial_id)
+        user_message = build_user_message(payload_text, condition, trial_rng)
+        system_prompt = build_system_prompt(condition)
+
+        if mode == "simulate":
+            simulated = simulate_trial(
+                rng=trial_rng,
+                model_name=model_name,
+                payload_name=payload_name,
+                condition=condition,
+            )
+            status = str(simulated["status"])
+            error = str(simulated["error"])
+            score = int(simulated["score"])
+            response_text = str(simulated["response_text"])
+            raw_tool_calls = list(simulated["raw_tool_calls"])
+            effective_tool_calls = list(simulated["effective_tool_calls"])
+            blocked_tool_calls = list(simulated["blocked_tool_calls"])
+            input_tokens = int(simulated["input_tokens"])
+            output_tokens = int(simulated["output_tokens"])
+            model_id = str(MODELS[model_name]["model_ids"][0])
+        else:
+            try:
+                live = call_live_model(model_name, system_prompt, user_message)
+                raw_tool_calls = list(live["raw_tool_calls"])
+                if condition == "full_stack":
+                    effective_tool_calls, blocked_tool_calls = apply_full_stack_policy(raw_tool_calls)
+                else:
+                    effective_tool_calls = raw_tool_calls
+                    blocked_tool_calls = []
+
+                response_text = str(live["response_text"])
+                score = auto_score(response_text, effective_tool_calls)
+                status = "ok"
+                error = ""
+                input_tokens = int(live["input_tokens"])
+                output_tokens = int(live["output_tokens"])
+                model_id = str(live["model_id"])
+            except Exception as err:  # pragma: no cover - live path
+                status = "error"
+                error = str(err)
+                score = -1
+                response_text = f"ERROR: {err}"
+                raw_tool_calls = []
+                effective_tool_calls = []
+                blocked_tool_calls = []
+                input_tokens = 0
+                output_tokens = 0
+                model_id = ""
+
+            if args.sleep_ms > 0:
+                time.sleep(args.sleep_ms / 1000)
+
+        row = build_row(
+            run_id=run_id,
+            timestamp=timestamp,
+            mode=mode,
+            trial_id=trial_id,
+            model_name=model_name,
+            model_id=model_id,
+            payload_name=payload_name,
+            condition=condition,
+            trial_num=trial_num,
+            status=status,
+            error=error,
+            score=score,
+            response_text=response_text,
+            raw_tool_calls=raw_tool_calls,
+            effective_tool_calls=effective_tool_calls,
+            blocked_tool_calls=blocked_tool_calls,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        rows.append(row)
+        completed_trials += 1
+        budget.record_trial(model_name, input_tokens, output_tokens)
+
+        if status == "ok":
+            icon = ["S0", "S1", "S2", "S3"][max(0, min(3, score))]
+        else:
+            icon = "ERR"
+        budget_text = budget.budget_progress_text() if budget.settings.max_cost_usd > 0 else ""
+        print(
+            f"[{trial_id:>4}/{total}] {model_name:17s} {payload_name:20s} "
+            f"{condition:17s} t{trial_num} {icon}{budget_text}"
+        )
+
+    if not rows:
+        raise SystemExit("No trials executed; budget guard stopped run before first trial.")
 
     write_rows(output_path, rows)
     write_rows(latest_path, rows)
 
     print(f"\nSaved run CSV: {output_path}")
     print(f"Updated latest: {latest_path}")
+    print(
+        f"Budget summary: spent=${budget.spent_cost_usd:.2f}, "
+        f"projected=${budget.projected_total_cost_usd:.2f}, "
+        f"completed={completed_trials}/{total}"
+    )
+    if budget_stop_reason:
+        print(f"Budget stop reason: {budget_stop_reason}")
+    report_path = budget.write_report(completed_trials=completed_trials, stop_reason=budget_stop_reason)
+    if report_path:
+        print(f"Wrote budget report: {report_path}")
     summarize(rows)
 
 

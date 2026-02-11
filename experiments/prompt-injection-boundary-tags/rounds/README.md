@@ -18,3 +18,15 @@
 - Keep one script pair per active round (`harness/run_experiment.py`, `analysis/analyze.py`).
 - Preserve old harnesses for reproducibility; create new rounds instead of mutating historical logic.
 - Use `tools/normalize_prompt_injection_runs.py` to regenerate `canonical/runs_v1.csv`.
+
+## Common Budget Controls
+
+Rounds with live model calls expose shared budget flags:
+- `--max-cost-usd`
+- `--max-cost-per-trial-usd`
+- `--budget-mode hard|warn`
+- `--budget-report <path>`
+- `--budget-estimate-input-tokens`, `--budget-estimate-output-tokens`
+- `--budget-guard-input-tokens`, `--budget-guard-output-tokens`
+
+Current coverage: `round3`, `round4`, `round5`, `round7`.

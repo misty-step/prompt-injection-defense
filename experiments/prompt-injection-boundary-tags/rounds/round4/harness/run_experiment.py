@@ -19,10 +19,16 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True)
 
 ROUND_DIR = Path(__file__).resolve().parent.parent
+EXPERIMENT_DIR = ROUND_DIR.parent.parent
 DATA_DIR = ROUND_DIR / "data"
 PAYLOAD_PATH = ROUND_DIR.parent / "round2b" / "payloads" / "payloads.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+if str(EXPERIMENT_DIR) not in sys.path:
+    sys.path.insert(0, str(EXPERIMENT_DIR))
+
+from shared.budget.controller import BudgetController, add_budget_cli_args, settings_from_args
 
 SCHEMA_VERSION = "round4_multiturn_v1"
 ROUND_ID = "round4"
@@ -922,6 +928,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use live model APIs. Default is simulation mode.",
     )
+    add_budget_cli_args(parser)
     return parser.parse_args()
 
 
@@ -954,13 +961,27 @@ def run() -> None:
     run_id = f"round4_multiturn_{timestamp}"
     output_path = args.output or (DATA_DIR / f"multiturn_results_{timestamp}.csv")
     latest_path = DATA_DIR / "multiturn_results_latest.csv"
+    budget_default_report_path = DATA_DIR / f"budget_summary_{timestamp}.json"
 
-    total = (
-        len(selected_models)
-        * len(payload_items)
-        * len(selected_conditions)
-        * len(selected_modes)
-        * args.trials
+    trial_plan: List[Tuple[str, str, str, str, str, int]] = []
+    for model_name in selected_models:
+        for payload_name, payload_text in payload_items:
+            for condition in selected_conditions:
+                for attack_mode in selected_modes:
+                    for trial_num in range(1, args.trials + 1):
+                        trial_plan.append(
+                            (model_name, payload_name, payload_text, condition, attack_mode, trial_num)
+                        )
+
+    total = len(trial_plan)
+    budget = BudgetController(
+        settings=settings_from_args(args),
+        estimate_cost_usd=estimate_cost_usd,
+        run_id=run_id,
+        timestamp=timestamp,
+        mode=mode,
+        planned_trial_models=[model_name for model_name, *_rest in trial_plan],
+        default_report_path=budget_default_report_path,
     )
 
     print(f"Starting round4 benchmark: mode={mode}, total_trials={total}")
@@ -968,64 +989,116 @@ def run() -> None:
     print(f"Payloads: {', '.join(name for name, _text in payload_items)}")
     print(f"Conditions: {', '.join(selected_conditions)}")
     print(f"Attack modes: {', '.join(selected_modes)}")
+    print(
+        "Budget plan: "
+        f"projected=${budget.projected_total_cost_usd:.2f} "
+        f"(estimate_tokens_in={budget.settings.estimate_input_tokens}, "
+        f"estimate_tokens_out={budget.settings.estimate_output_tokens})"
+    )
+    if budget.settings.max_cost_usd > 0:
+        print(f"Budget cap (run): ${budget.settings.max_cost_usd:.2f} mode={budget.settings.mode}")
+    if budget.settings.max_cost_per_trial_usd > 0:
+        print(
+            "Budget cap (per trial guard): "
+            f"${budget.settings.max_cost_per_trial_usd:.4f} mode={budget.settings.mode}"
+        )
+
+    preflight_message = budget.preflight_message()
+    if preflight_message:
+        if budget.settings.mode == "hard":
+            report_path = budget.write_report(completed_trials=0, stop_reason=preflight_message)
+            if report_path:
+                print(f"Wrote budget report: {report_path}")
+            raise SystemExit(preflight_message)
+        print(f"WARNING: {preflight_message}")
 
     rows: List[Dict[str, object]] = []
-    trial_id = 0
+    completed_trials = 0
+    budget_stop_reason = ""
 
-    for model_name in selected_models:
-        for payload_name, payload_text in payload_items:
-            for condition in selected_conditions:
-                for attack_mode in selected_modes:
-                    for trial_num in range(1, args.trials + 1):
-                        trial_id += 1
-                        trial_rng = random.Random((args.seed * 10_000) + trial_id)
+    for trial_id, (
+        model_name,
+        payload_name,
+        payload_text,
+        condition,
+        attack_mode,
+        trial_num,
+    ) in enumerate(trial_plan, start=1):
+        before_trial_message = budget.before_trial_message(model_name)
+        if before_trial_message:
+            if budget.settings.mode == "hard":
+                budget_stop_reason = before_trial_message
+                print(f"Budget stop: {before_trial_message}")
+                break
+            print(f"WARNING: {before_trial_message}")
 
-                        turns = build_turn_sequence(payload_text, condition, attack_mode, trial_rng)
-                        system_prompt = build_system_prompt(condition)
+        trial_rng = random.Random((args.seed * 10_000) + trial_id)
+        turns = build_turn_sequence(payload_text, condition, attack_mode, trial_rng)
+        system_prompt = build_system_prompt(condition)
 
-                        trial_result = run_trial(
-                            mode=mode,
-                            model_name=model_name,
-                            payload_name=payload_name,
-                            condition=condition,
-                            attack_mode=attack_mode,
-                            turns=turns,
-                            system_prompt=system_prompt,
-                            trial_rng=trial_rng,
-                            sleep_ms=args.sleep_ms,
-                        )
+        trial_result = run_trial(
+            mode=mode,
+            model_name=model_name,
+            payload_name=payload_name,
+            condition=condition,
+            attack_mode=attack_mode,
+            turns=turns,
+            system_prompt=system_prompt,
+            trial_rng=trial_rng,
+            sleep_ms=args.sleep_ms,
+        )
 
-                        row = build_row(
-                            run_id=run_id,
-                            timestamp=timestamp,
-                            mode=mode,
-                            trial_id=trial_id,
-                            attack_mode=attack_mode,
-                            turn_count=len(turns),
-                            model_name=model_name,
-                            payload_name=payload_name,
-                            condition=condition,
-                            trial_num=trial_num,
-                            trial_result=trial_result,
-                        )
-                        rows.append(row)
+        row = build_row(
+            run_id=run_id,
+            timestamp=timestamp,
+            mode=mode,
+            trial_id=trial_id,
+            attack_mode=attack_mode,
+            turn_count=len(turns),
+            model_name=model_name,
+            payload_name=payload_name,
+            condition=condition,
+            trial_num=trial_num,
+            trial_result=trial_result,
+        )
+        rows.append(row)
+        completed_trials += 1
+        budget.record_trial(
+            model_name=model_name,
+            input_tokens=int(trial_result["input_tokens"]),
+            output_tokens=int(trial_result["output_tokens"]),
+        )
 
-                        status = str(trial_result["status"])
-                        score = int(trial_result["score"])
-                        if status == "ok":
-                            icon = ["S0", "S1", "S2", "S3"][max(0, min(3, score))]
-                        else:
-                            icon = "ERR"
-                        print(
-                            f"[{trial_id:>4}/{total}] {model_name:17s} {payload_name:20s} "
-                            f"{condition:17s} {attack_mode:11s} t{trial_num} {icon}"
-                        )
+        status = str(trial_result["status"])
+        score = int(trial_result["score"])
+        if status == "ok":
+            icon = ["S0", "S1", "S2", "S3"][max(0, min(3, score))]
+        else:
+            icon = "ERR"
+        budget_text = budget.budget_progress_text() if budget.settings.max_cost_usd > 0 else ""
+        print(
+            f"[{trial_id:>4}/{total}] {model_name:17s} {payload_name:20s} "
+            f"{condition:17s} {attack_mode:11s} t{trial_num} {icon}{budget_text}"
+        )
+
+    if not rows:
+        raise SystemExit("No trials executed; budget guard stopped run before first trial.")
 
     write_rows(output_path, rows)
     write_rows(latest_path, rows)
 
     print(f"\nSaved run CSV: {output_path}")
     print(f"Updated latest: {latest_path}")
+    print(
+        f"Budget summary: spent=${budget.spent_cost_usd:.2f}, "
+        f"projected=${budget.projected_total_cost_usd:.2f}, "
+        f"completed={completed_trials}/{total}"
+    )
+    if budget_stop_reason:
+        print(f"Budget stop reason: {budget_stop_reason}")
+    report_path = budget.write_report(completed_trials=completed_trials, stop_reason=budget_stop_reason)
+    if report_path:
+        print(f"Wrote budget report: {report_path}")
     summarize(rows)
 
 

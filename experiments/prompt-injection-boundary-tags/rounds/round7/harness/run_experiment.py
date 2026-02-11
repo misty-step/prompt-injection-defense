@@ -29,6 +29,12 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 if str(EXPERIMENT_DIR) not in sys.path:
     sys.path.insert(0, str(EXPERIMENT_DIR))
 
+from shared.budget.controller import (
+    BudgetController,
+    BudgetSettings,
+    add_budget_cli_args,
+    settings_from_args,
+)
 from shared.scoring.scorer import is_suspicious_tool_call, load_scorer_config, score_response
 
 SCORER_CONFIG_PATH = EXPERIMENT_DIR / "shared" / "scoring" / "scorer_config_v2.json"
@@ -394,33 +400,6 @@ def estimate_cost_usd(model_name: str, input_tokens: int, output_tokens: int) ->
     input_price = float(cfg.get("cost_input_per_mtok", 0.0))
     output_price = float(cfg.get("cost_output_per_mtok", 0.0))
     return (input_tokens / 1_000_000) * input_price + (output_tokens / 1_000_000) * output_price
-
-
-def projected_cost_usd(
-    model_budget_pairs: Sequence[Tuple[str, str]],
-    payload_count: int,
-    conditions_count: int,
-    trials: int,
-    estimate_input_tokens: int,
-    estimate_output_tokens: int,
-) -> float:
-    per_trial = {
-        model_name: estimate_cost_usd(model_name, estimate_input_tokens, estimate_output_tokens)
-        for model_name, _ in model_budget_pairs
-    }
-    trials_per_pair = payload_count * conditions_count * trials
-    return sum(per_trial[model_name] * trials_per_pair for model_name, _ in model_budget_pairs)
-
-
-def should_stop_before_trial(spent_cost_usd: float, next_trial_guard_cost_usd: float, max_cost_usd: float) -> bool:
-    if max_cost_usd <= 0:
-        return False
-    return spent_cost_usd + next_trial_guard_cost_usd > max_cost_usd
-
-
-def write_budget_report(path: Path, report: Mapping[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
 
 
 def reasoning_budgets_for_model(
@@ -1023,54 +1002,7 @@ def parse_args() -> argparse.Namespace:
         default="gpt-5.2,gemini-3-flash",
         help="Comma-separated models that should use the reasoning budget axis.",
     )
-    parser.add_argument(
-        "--max-cost-usd",
-        type=float,
-        default=0.0,
-        help="Hard/soft run budget cap in USD. 0 disables cap enforcement.",
-    )
-    parser.add_argument(
-        "--max-cost-per-trial-usd",
-        type=float,
-        default=0.0,
-        help="Hard/soft per-trial guard cap in USD. 0 disables per-trial cap.",
-    )
-    parser.add_argument(
-        "--budget-estimate-input-tokens",
-        type=int,
-        default=1350,
-        help="Estimated input tokens per trial used for preflight cost projection.",
-    )
-    parser.add_argument(
-        "--budget-estimate-output-tokens",
-        type=int,
-        default=350,
-        help="Estimated output tokens per trial used for preflight cost projection.",
-    )
-    parser.add_argument(
-        "--budget-guard-input-tokens",
-        type=int,
-        default=1800,
-        help="Conservative input-token guard used before each trial to avoid budget overshoot.",
-    )
-    parser.add_argument(
-        "--budget-guard-output-tokens",
-        type=int,
-        default=520,
-        help="Conservative output-token guard used before each trial to avoid budget overshoot.",
-    )
-    parser.add_argument(
-        "--budget-mode",
-        choices=["hard", "warn"],
-        default="hard",
-        help="hard: stop run when cap would be exceeded; warn: log but continue.",
-    )
-    parser.add_argument(
-        "--budget-report",
-        type=Path,
-        default=None,
-        help="Optional JSON output path for budget/usage summary.",
-    )
+    add_budget_cli_args(parser)
     parser.add_argument(
         "--output",
         type=Path,
@@ -1115,18 +1047,10 @@ def run() -> None:
         reasoning_budgets=reasoning_budgets,
     )
 
-    if args.max_cost_usd < 0:
-        raise SystemExit("--max-cost-usd must be >= 0")
-    if args.max_cost_per_trial_usd < 0:
-        raise SystemExit("--max-cost-per-trial-usd must be >= 0")
-    if args.budget_estimate_input_tokens <= 0 or args.budget_estimate_output_tokens <= 0:
-        raise SystemExit("Budget estimate tokens must be > 0")
-    if args.budget_guard_input_tokens <= 0 or args.budget_guard_output_tokens <= 0:
-        raise SystemExit("Budget guard tokens must be > 0")
-
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     run_id = f"{ROUND_ID}_cross_model_{timestamp}"
     output_path = args.output or (DATA_DIR / f"cross_model_results_{timestamp}.csv")
+    budget_default_report_path = DATA_DIR / f"budget_summary_{timestamp}.json"
 
     trial_plan: List[Tuple[str, str, str, str, str, int]] = []
     for model_name, reasoning_budget in model_budget_pairs:
@@ -1138,13 +1062,14 @@ def run() -> None:
                     )
 
     total = len(trial_plan)
-    projected_total_cost = projected_cost_usd(
-        model_budget_pairs=model_budget_pairs,
-        payload_count=len(payload_items),
-        conditions_count=len(CONDITIONS),
-        trials=args.trials,
-        estimate_input_tokens=args.budget_estimate_input_tokens,
-        estimate_output_tokens=args.budget_estimate_output_tokens,
+    budget = BudgetController(
+        settings=settings_from_args(args),
+        estimate_cost_usd=estimate_cost_usd,
+        run_id=run_id,
+        timestamp=timestamp,
+        mode=mode,
+        planned_trial_models=[model_name for model_name, _budget, *_rest in trial_plan],
+        default_report_path=budget_default_report_path,
     )
 
     print(f"Starting round7: mode={mode}, trials={total}")
@@ -1154,59 +1079,30 @@ def run() -> None:
     print(f"Reasoning budgets: {', '.join(reasoning_budgets) if reasoning_budgets else 'none'}")
     print(
         "Budget plan: "
-        f"projected=${projected_total_cost:.2f} "
-        f"(estimate_tokens_in={args.budget_estimate_input_tokens}, "
-        f"estimate_tokens_out={args.budget_estimate_output_tokens})"
+        f"projected=${budget.projected_total_cost_usd:.2f} "
+        f"(estimate_tokens_in={budget.settings.estimate_input_tokens}, "
+        f"estimate_tokens_out={budget.settings.estimate_output_tokens})"
     )
-    if args.max_cost_usd > 0:
-        print(f"Budget cap (run): ${args.max_cost_usd:.2f} mode={args.budget_mode}")
-    if args.max_cost_per_trial_usd > 0:
-        print(f"Budget cap (per trial guard): ${args.max_cost_per_trial_usd:.4f} mode={args.budget_mode}")
-
-    preflight_stop_reason = ""
-    if args.max_cost_usd > 0 and projected_total_cost > args.max_cost_usd:
-        message = (
-            f"Projected run cost ${projected_total_cost:.2f} exceeds --max-cost-usd ${args.max_cost_usd:.2f}."
+    if budget.settings.max_cost_usd > 0:
+        print(f"Budget cap (run): ${budget.settings.max_cost_usd:.2f} mode={budget.settings.mode}")
+    if budget.settings.max_cost_per_trial_usd > 0:
+        print(
+            "Budget cap (per trial guard): "
+            f"${budget.settings.max_cost_per_trial_usd:.4f} mode={budget.settings.mode}"
         )
-        if args.budget_mode == "hard":
-            preflight_stop_reason = message
-        else:
-            print(f"WARNING: {message}")
 
-    if preflight_stop_reason:
-        if args.budget_report or args.max_cost_usd > 0 or args.max_cost_per_trial_usd > 0:
-            budget_report_path = args.budget_report or (DATA_DIR / f"budget_summary_{timestamp}.json")
-            budget_report = {
-                "run_id": run_id,
-                "timestamp": timestamp,
-                "mode": mode,
-                "planned_trials": total,
-                "completed_trials": 0,
-                "remaining_trials": total,
-                "projected_total_cost_usd": round(projected_total_cost, 8),
-                "spent_cost_usd": 0.0,
-                "max_cost_usd": float(args.max_cost_usd),
-                "max_cost_per_trial_usd": float(args.max_cost_per_trial_usd),
-                "budget_mode": args.budget_mode,
-                "budget_stop_reason": preflight_stop_reason,
-                "estimate_input_tokens": int(args.budget_estimate_input_tokens),
-                "estimate_output_tokens": int(args.budget_estimate_output_tokens),
-                "guard_input_tokens": int(args.budget_guard_input_tokens),
-                "guard_output_tokens": int(args.budget_guard_output_tokens),
-                "per_model_spend_usd": {},
-            }
-            if not budget_report_path.is_absolute():
-                budget_report_path = (Path.cwd() / budget_report_path).resolve()
-            write_budget_report(budget_report_path, budget_report)
-            print(f"Wrote budget report: {budget_report_path}")
-        raise SystemExit(preflight_stop_reason)
+    preflight_message = budget.preflight_message()
+    if preflight_message:
+        if budget.settings.mode == "hard":
+            report_path = budget.write_report(completed_trials=0, stop_reason=preflight_message)
+            if report_path:
+                print(f"Wrote budget report: {report_path}")
+            raise SystemExit(preflight_message)
+        print(f"WARNING: {preflight_message}")
 
     rows: List[Dict[str, object]] = []
-    spent_cost_usd = 0.0
     completed_trials = 0
     budget_stop_reason = ""
-    per_model_spend_usd: Dict[str, float] = {model_name: 0.0 for model_name in selected_models}
-    observed_max_tokens: Dict[str, Tuple[int, int]] = {model_name: (0, 0) for model_name in selected_models}
 
     for trial_id, (
         model_name,
@@ -1216,32 +1112,13 @@ def run() -> None:
         condition,
         trial_num,
     ) in enumerate(trial_plan, start=1):
-        observed_in, observed_out = observed_max_tokens.get(model_name, (0, 0))
-        guard_input_tokens = max(args.budget_guard_input_tokens, observed_in)
-        guard_output_tokens = max(args.budget_guard_output_tokens, observed_out)
-        next_trial_guard_cost = estimate_cost_usd(model_name, guard_input_tokens, guard_output_tokens)
-
-        if args.max_cost_per_trial_usd > 0 and next_trial_guard_cost > args.max_cost_per_trial_usd:
-            message = (
-                f"Per-trial guard ${next_trial_guard_cost:.4f} for {model_name} exceeds "
-                f"--max-cost-per-trial-usd ${args.max_cost_per_trial_usd:.4f}."
-            )
-            if args.budget_mode == "hard":
-                budget_stop_reason = message
-                print(f"Budget stop: {message}")
+        before_trial_message = budget.before_trial_message(model_name)
+        if before_trial_message:
+            if budget.settings.mode == "hard":
+                budget_stop_reason = before_trial_message
+                print(f"Budget stop: {before_trial_message}")
                 break
-            print(f"WARNING: {message}")
-
-        if should_stop_before_trial(spent_cost_usd, next_trial_guard_cost, args.max_cost_usd):
-            message = (
-                f"Next trial guard would exceed run cap: spent=${spent_cost_usd:.2f}, "
-                f"next_guard=${next_trial_guard_cost:.4f}, cap=${args.max_cost_usd:.2f}."
-            )
-            if args.budget_mode == "hard":
-                budget_stop_reason = message
-                print(f"Budget stop: {message}")
-                break
-            print(f"WARNING: {message}")
+            print(f"WARNING: {before_trial_message}")
 
         trial_rng = random.Random((args.seed * 1_000_000) + trial_id)
         user_message = build_user_message(payload_text, condition, trial_rng)
@@ -1333,14 +1210,7 @@ def run() -> None:
         rows.append(row)
         completed_trials += 1
 
-        trial_cost_usd = estimate_cost_usd(model_name, input_tokens, output_tokens)
-        spent_cost_usd += trial_cost_usd
-        per_model_spend_usd[model_name] = per_model_spend_usd.get(model_name, 0.0) + trial_cost_usd
-
-        observed_max_tokens[model_name] = (
-            max(observed_in, input_tokens),
-            max(observed_out, output_tokens),
-        )
+        budget.record_trial(model_name, input_tokens, output_tokens)
 
         if status == "ok":
             icon = ["S0", "S1", "S2", "S3"][max(0, min(3, score_effective))]
@@ -1348,8 +1218,8 @@ def run() -> None:
             icon = "ERR"
 
         budget_text = ""
-        if args.max_cost_usd > 0:
-            budget_text = f" budget=${spent_cost_usd:.2f}/{args.max_cost_usd:.2f}"
+        if budget.settings.max_cost_usd > 0:
+            budget_text = budget.budget_progress_text()
 
         print(
             f"[{trial_id:>4}/{total}] {model_name:20s} {reasoning_budget:4s} "
@@ -1369,41 +1239,16 @@ def run() -> None:
         print(f"Updated latest: {LATEST_PATH}")
 
     print(
-        f"Budget summary: spent=${spent_cost_usd:.2f}, "
-        f"projected=${projected_total_cost:.2f}, "
+        f"Budget summary: spent=${budget.spent_cost_usd:.2f}, "
+        f"projected=${budget.projected_total_cost_usd:.2f}, "
         f"completed={completed_trials}/{total}"
     )
     if budget_stop_reason:
         print(f"Budget stop reason: {budget_stop_reason}")
 
-    if args.budget_report or args.max_cost_usd > 0 or args.max_cost_per_trial_usd > 0:
-        budget_report_path = args.budget_report or (DATA_DIR / f"budget_summary_{timestamp}.json")
-        budget_report = {
-            "run_id": run_id,
-            "timestamp": timestamp,
-            "mode": mode,
-            "planned_trials": total,
-            "completed_trials": completed_trials,
-            "remaining_trials": total - completed_trials,
-            "projected_total_cost_usd": round(projected_total_cost, 8),
-            "spent_cost_usd": round(spent_cost_usd, 8),
-            "max_cost_usd": float(args.max_cost_usd),
-            "max_cost_per_trial_usd": float(args.max_cost_per_trial_usd),
-            "budget_mode": args.budget_mode,
-            "budget_stop_reason": budget_stop_reason,
-            "estimate_input_tokens": int(args.budget_estimate_input_tokens),
-            "estimate_output_tokens": int(args.budget_estimate_output_tokens),
-            "guard_input_tokens": int(args.budget_guard_input_tokens),
-            "guard_output_tokens": int(args.budget_guard_output_tokens),
-            "per_model_spend_usd": {
-                model_name: round(cost, 8)
-                for model_name, cost in sorted(per_model_spend_usd.items())
-            },
-        }
-        if not budget_report_path.is_absolute():
-            budget_report_path = (Path.cwd() / budget_report_path).resolve()
-        write_budget_report(budget_report_path, budget_report)
-        print(f"Wrote budget report: {budget_report_path}")
+    report_path = budget.write_report(completed_trials=completed_trials, stop_reason=budget_stop_reason)
+    if report_path:
+        print(f"Wrote budget report: {report_path}")
 
     summarize(rows)
 
