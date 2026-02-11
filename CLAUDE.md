@@ -81,11 +81,57 @@ Config-driven via `scorer_config_v2.json`. Functions: `score_response()`, `conta
 
 `run_experiment_r2.py` and `analyze_r2.py` forward to canonical round paths. Prefer `make run-r2b` etc.
 
+## Research Standards
+
+### Novelty requirement
+
+Every experiment MUST produce new, useful information. Before starting any experiment:
+
+1. **Literature review** — Search for existing benchmarks, papers, and datasets that cover the same ground. Use web search, not training data.
+2. **Gap analysis** — Identify specifically what our experiment measures that existing work does not.
+3. **Novelty statement** — Document in `design.md`: "This experiment produces new information because [X]. Existing work covers [Y] but not [Z]."
+
+If the gap analysis reveals the experiment duplicates existing work, rescope or deprioritize. Don't run experiments for the sake of running experiments.
+
+### Scientific method
+
+Every experiment follows: **Hypothesis → Methodology → Data → Analysis → Conclusions → Deliverables**.
+
+- Hypotheses must be falsifiable
+- Methodology must be reproducible (deterministic simulation + documented live configs)
+- Data is immutable and versioned
+- Analysis includes statistical tests where appropriate
+- Conclusions address the hypothesis directly (confirmed / refuted / inconclusive + why)
+
+### Deliverable framework
+
+Every completed experiment produces ALL of the following artifacts in `report/`:
+
+| Artifact | File | Audience | Description |
+|----------|------|----------|-------------|
+| **Findings** | `findings.md` | Internal | Raw results, tables, statistical tests, methodology notes |
+| **Paper** | `paper.md` | Academic/technical | Full scientific paper: abstract, introduction, prior art, methodology, results, discussion, citations |
+| **Blog post** | `blog_post.md` | Practitioners | Accessible 800-1500 word overview. What we tested, what we found, what it means for builders |
+| **Executive summary** | `executive_summary.md` | Leadership/non-technical | 1-page TL;DR with key finding, implication, recommendation |
+| **Social thread** | `social_thread.md` | Twitter/public | 3-5 post thread with hook, key finding, chart reference, link to blog |
+| **Charts** | `charts/` | All | PNG/SVG visualizations of key results. Every finding that can be charted, should be |
+| **Data card** | `data_card.md` | Researchers | Dataset description: schema, size, collection method, limitations, license, citation format |
+
+Deliverables are NOT optional polish — they are part of the experiment. An experiment without deliverables is incomplete.
+
+### Open science defaults
+
+- Code: open source (MIT)
+- Data: open, immutable CSVs with schema documentation
+- Methodology: fully documented in `design.md`, reproducible via `--simulate`
+- Citations: proper attribution to prior work in `paper.md`
+
 ## Conventions
 
 - Python 3.10+, PEP 8, `ruff` at 100-char line length.
-- New experiments get a `roundN/` directory with `design.md`, `harness/`, `analysis/`, `data/`.
+- New experiments get a `roundN/` directory with `design.md`, `harness/`, `analysis/`, `data/`, `report/`.
 - Data files in `data/` are immutable. Add new runs with timestamps; keep `*_latest.csv` symlinks.
+- Report files in `report/` follow the deliverable framework above.
 - Commit prefixes: `experiment:`, `data:`, `docs:`, `refactor:`, `fix:`, `infra:`.
 - Env vars for API keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `MOONSHOT_AI_API_KEY`.
 - Tests go in `tests/test_<module>.py` using `unittest`. Focus on deterministic logic (scoring, classification).
