@@ -1,0 +1,23 @@
+{
+  "run_id": "round7_cross_model_20260212_153002",
+  "timestamp": "20260212_153002",
+  "mode": "live",
+  "planned_trials": 305,
+  "completed_trials": 305,
+  "remaining_trials": 0,
+  "projected_total_cost_usd": 1.47315,
+  "spent_cost_usd": 1.4850438,
+  "max_cost_usd": 2.5,
+  "max_cost_per_trial_usd": 0.03,
+  "budget_mode": "hard",
+  "budget_stop_reason": "",
+  "estimate_input_tokens": 1350,
+  "estimate_output_tokens": 350,
+  "guard_input_tokens": 1800,
+  "guard_output_tokens": 520,
+  "per_model_spend_usd": {
+    "claude-sonnet-4.5": 0.553809,
+    "gemini-3-flash": 0.0393948,
+    "gpt-5.2": 0.89184
+  }
+}

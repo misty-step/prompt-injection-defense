@@ -30,7 +30,7 @@ python3 experiments/prompt-injection-boundary-tags/rounds/round7/harness/run_exp
 Expected env vars by provider:
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
-- `GOOGLE_API_KEY`
+- `GOOGLE_API_KEY` (or `GEMINI_API_KEY`)
 - `XAI_API_KEY`
 - `OPENROUTER_API_KEY`
 

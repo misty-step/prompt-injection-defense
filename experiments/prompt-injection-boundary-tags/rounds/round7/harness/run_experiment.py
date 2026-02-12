@@ -62,7 +62,7 @@ REASONING_LEVELS = ("none", "low", "high")
 MODELS: Dict[str, Dict[str, object]] = {
     "claude-sonnet-4.5": {
         "provider": "anthropic",
-        "model_ids": ["claude-sonnet-4-5-latest", "claude-sonnet-4-latest"],
+        "model_ids": ["claude-sonnet-4-5-20250929", "claude-sonnet-4-20250514"],
         "api_key_env": "ANTHROPIC_API_KEY",
         "sim_base_risk": 0.20,
         "cost_input_per_mtok": 3.0,
@@ -80,7 +80,7 @@ MODELS: Dict[str, Dict[str, object]] = {
     },
     "gemini-3-flash": {
         "provider": "google",
-        "model_ids": ["gemini-3-flash", "gemini-2.5-flash"],
+        "model_ids": ["gemini-3-flash-preview", "gemini-2.5-flash"],
         "api_key_env": "GOOGLE_API_KEY",
         "sim_base_risk": 0.27,
         "cost_input_per_mtok": 0.2,
@@ -636,6 +636,8 @@ def call_google_gemini(
     reasoning_budget: str,
 ) -> Dict[str, object]:
     api_key = os.environ.get(api_key_env)
+    if not api_key and api_key_env == "GOOGLE_API_KEY":
+        api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError(f"Missing API key: {api_key_env}")
 
