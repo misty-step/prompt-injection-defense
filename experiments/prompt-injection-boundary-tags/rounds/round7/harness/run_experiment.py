@@ -993,6 +993,11 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated model names.",
     )
     parser.add_argument("--trials", type=int, default=3, help="Trials per payload x condition x model.")
+    parser.add_argument(
+        "--payloads",
+        default="",
+        help="Comma-separated payload ids to run (default: all).",
+    )
     parser.add_argument("--payload-limit", type=int, default=0, help="Optional max number of payloads.")
     parser.add_argument(
         "--conditions",
@@ -1012,6 +1017,11 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated models that should use the reasoning budget axis.",
     )
     add_budget_cli_args(parser)
+    parser.add_argument(
+        "--capture-failures",
+        action="store_true",
+        help="Write JSONL artifact with full response/tool calls for score>=2 or errors.",
+    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -1047,8 +1057,18 @@ def run() -> None:
 
     payloads = load_payloads(PAYLOAD_PATH)
     payload_items = sorted(payloads.items())
+    selected_payloads = parse_csv_list(args.payloads)
+    if selected_payloads:
+        unknown_payloads = [
+            payload_id for payload_id in selected_payloads if payload_id not in payloads
+        ]
+        if unknown_payloads:
+            raise SystemExit(f"Unknown payload ids: {', '.join(unknown_payloads)}")
+        payload_items = [(payload_id, payloads[payload_id]) for payload_id in selected_payloads]
     if args.payload_limit > 0:
         payload_items = payload_items[: args.payload_limit]
+    if not payload_items:
+        raise SystemExit("No payloads selected.")
 
     selected_conditions = list(CONDITIONS)
     if getattr(args, "conditions", ""):
@@ -1069,6 +1089,13 @@ def run() -> None:
     run_id = f"{ROUND_ID}_cross_model_{timestamp}"
     output_path = args.output or (DATA_DIR / f"cross_model_results_{timestamp}.csv")
     budget_default_report_path = DATA_DIR / f"budget_summary_{timestamp}.json"
+    capture_path = (
+        DATA_DIR / f"cross_model_failures_{timestamp}.jsonl" if args.capture_failures else None
+    )
+
+    if capture_path:
+        capture_path.parent.mkdir(parents=True, exist_ok=True)
+        capture_path.write_text("")
 
     trial_plan: List[Tuple[str, str, str, str, str, int]] = []
     for model_name, reasoning_budget in model_budget_pairs:
@@ -1107,6 +1134,8 @@ def run() -> None:
     print(f"Payloads: {len(payload_items)} | Conditions: {len(selected_conditions)} | Trials per combo: {args.trials}")
     print(f"Reasoning axis models: {', '.join(reasoning_models) if reasoning_models else 'none'}")
     print(f"Reasoning budgets: {', '.join(reasoning_budgets) if reasoning_budgets else 'none'}")
+    if capture_path:
+        print(f"Capture failures: {capture_path}")
     print(
         "Budget plan: "
         f"projected=${budget.projected_total_cost_usd:.2f} "
@@ -1271,6 +1300,36 @@ def run() -> None:
         budget_completed_trials += 1
 
         budget.record_trial(model_name, input_tokens, output_tokens)
+
+        if capture_path and (status != "ok" or score_effective >= 2):
+            capture_row = {
+                "schema_version": SCHEMA_VERSION,
+                "run_id": run_id,
+                "timestamp": timestamp,
+                "mode": mode,
+                "round_id": ROUND_ID,
+                "trial_id": trial_id,
+                "model": model_name,
+                "model_id": model_id,
+                "provider": MODELS[model_name]["provider"],
+                "payload": payload_name,
+                "condition": condition,
+                "trial_num": trial_num,
+                "reasoning_budget": reasoning_budget,
+                "status": status,
+                "error": error,
+                "score_raw": score_raw,
+                "score_effective": score_effective,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "raw_tool_calls": raw_tool_calls,
+                "effective_tool_calls": effective_tool_calls,
+                "blocked_tool_calls": blocked_tool_calls,
+                "response_text": response_text,
+            }
+            capture_path.parent.mkdir(parents=True, exist_ok=True)
+            with capture_path.open("a") as handle:
+                handle.write(json.dumps(capture_row) + "\n")
 
         if status == "ok":
             icon = ["S0", "S1", "S2", "S3"][max(0, min(3, score_effective))]
