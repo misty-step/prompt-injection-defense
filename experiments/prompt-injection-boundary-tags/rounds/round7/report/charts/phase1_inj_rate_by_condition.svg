@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420">
+<rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+<text x="70" y="34" font-family="ui-sans-serif, system-ui" font-size="20" fill="#111827">Round 7 Phase 1: Injection Rate by Defense Condition</text>
+<line x1="70" y1="60" x2="70" y2="310" stroke="#111827" stroke-width="1"/>
+<line x1="70" y1="310" x2="870" y2="310" stroke="#111827" stroke-width="1"/>
+<line x1="70" y1="310" x2="870" y2="310" stroke="#e5e7eb" stroke-width="1"/>
+<text x="60" y="314" text-anchor="end" font-family="ui-sans-serif, system-ui" font-size="12" fill="#6b7280">0.0%</text>
+<line x1="70" y1="185" x2="870" y2="185" stroke="#e5e7eb" stroke-width="1"/>
+<text x="60" y="189" text-anchor="end" font-family="ui-sans-serif, system-ui" font-size="12" fill="#6b7280">9.5%</text>
+<line x1="70" y1="60" x2="870" y2="60" stroke="#e5e7eb" stroke-width="1"/>
+<text x="60" y="64" text-anchor="end" font-family="ui-sans-serif, system-ui" font-size="12" fill="#6b7280">18.9%</text>
+<rect x="70" y="60" width="148" height="250" rx="6" fill="#2563eb"/>
+<text x="144.0" y="52" text-anchor="middle" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">18.9%</text>
+<text x="144.0" y="328" text-anchor="end" transform="rotate(-35 144.0 328)" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">raw</text>
+<rect x="232" y="190" width="148" height="120" rx="6" fill="#2563eb"/>
+<text x="306.0" y="182" text-anchor="middle" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">9.1%</text>
+<text x="306.0" y="328" text-anchor="end" transform="rotate(-35 306.0 328)" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">tags_only</text>
+<rect x="394" y="240" width="148" height="70" rx="6" fill="#2563eb"/>
+<text x="468.0" y="232" text-anchor="middle" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">5.3%</text>
+<text x="468.0" y="328" text-anchor="end" transform="rotate(-35 468.0 328)" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">instruction_only</text>
+<rect x="556" y="280" width="148" height="30" rx="6" fill="#2563eb"/>
+<text x="630.0" y="272" text-anchor="middle" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">2.3%</text>
+<text x="630.0" y="328" text-anchor="end" transform="rotate(-35 630.0 328)" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">instruction_tags</text>
+<rect x="718" y="310" width="148" height="0" rx="6" fill="#2563eb"/>
+<text x="792.0" y="302" text-anchor="middle" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">0.0%</text>
+<text x="792.0" y="328" text-anchor="end" transform="rotate(-35 792.0 328)" font-family="ui-sans-serif, system-ui" font-size="12" fill="#111827">full_stack</text>
+</svg>
