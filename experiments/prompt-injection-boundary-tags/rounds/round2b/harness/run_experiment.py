@@ -46,6 +46,7 @@ if str(EXPERIMENT_DIR) not in sys.path:
     sys.path.insert(0, str(EXPERIMENT_DIR))
 
 from shared.budget.controller import BudgetController, add_budget_cli_args, settings_from_args
+from shared.preflight.live import run_live_preflight
 from shared.scoring.scorer import load_scorer_config, score_response
 
 SCORER_CONFIG_PATH = EXPERIMENT_DIR / "shared" / "scoring" / "scorer_config_v2.json"
@@ -644,8 +645,11 @@ def run_experiment():
     total_per_model = len(payload_items) * len(conditions) * args.trials
     total_all = total_per_model * len(selected_models)
     planned_trial_models = []
+    preflight_targets: list[tuple[str, str]] = []
     for model in selected_models:
-        planned_trial_models.append(model["name"])  # connectivity check
+        model_name = str(model["name"])
+        preflight_targets.append((model_name, model_name))
+        planned_trial_models.append(model_name)
     for model in selected_models:
         for _payload_name, _payload_text in payload_items:
             for _condition in conditions:
@@ -700,6 +704,38 @@ def run_experiment():
 
     completed_trials = 0
     budget_stop_reason = ""
+    budget_completed_trials = 0
+
+    print(f"Running mandatory live preflight: {len(preflight_targets)} probe(s)")
+
+    def _probe_call(_target_id: str, model_name: str) -> dict[str, object]:
+        model_config = MODEL_MAP[model_name]
+        _text, _tool_calls, used_model, input_tokens, output_tokens = call_model(
+            model_config,
+            "You are a test assistant. Reply with one short word.",
+            "Respond with: ok",
+        )
+        return {
+            "model_id": used_model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+    probe_results = run_live_preflight(
+        mode="live",
+        targets=preflight_targets,
+        probe_call=_probe_call,
+        budget=budget,
+        fallback_input_tokens=budget.settings.estimate_input_tokens,
+        fallback_output_tokens=budget.settings.estimate_output_tokens,
+    )
+    budget_completed_trials += len(probe_results)
+    for probe in probe_results:
+        print(
+            "  preflight ok: "
+            f"{probe['target_id']} model_id={probe['model_id'] or '?'} "
+            f"cost=${float(probe['trial_cost_usd']):.4f}"
+        )
 
     for model_config in selected_models:
         model_name = model_config["name"]
@@ -710,30 +746,6 @@ def run_experiment():
         print(f"\n{'─'*70}")
         print(f"🤖 Model: {model_name}")
         print(f"{'─'*70}")
-
-        # Test connectivity first
-        before_trial_message = budget.before_trial_message(model_name)
-        if before_trial_message:
-            if budget.settings.mode == "hard":
-                budget_stop_reason = before_trial_message
-                print(f"  Budget stop: {before_trial_message}")
-                break
-            print(f"  WARNING: {before_trial_message}")
-
-        try:
-            test_text, test_tc, used_model, test_input_tokens, test_output_tokens = call_model(
-                model_config, "You are a test assistant.", "Say 'hello' in one word."
-            )
-            print(f"  ✅ Connected (using {used_model})")
-            if test_input_tokens == 0 and test_output_tokens == 0:
-                test_input_tokens = budget.settings.estimate_input_tokens
-                test_output_tokens = budget.settings.estimate_output_tokens
-            budget.record_trial(model_name, test_input_tokens, test_output_tokens)
-            completed_trials += 1
-        except Exception as e:
-            print(f"  ❌ Failed to connect: {e}")
-            print(f"  ⏭️ Skipping {model_name}")
-            continue
 
         for payload_name, payload_text in payload_items:
             for condition in conditions:
@@ -772,6 +784,7 @@ def run_experiment():
                         output_tokens = budget.settings.estimate_output_tokens
                     trial_cost_usd = budget.record_trial(model_name, input_tokens, output_tokens)
                     completed_trials += 1
+                    budget_completed_trials += 1
 
                     result = {
                         "model": model_name,
@@ -854,14 +867,17 @@ def run_experiment():
     print(
         f"  Budget summary: spent=${budget.spent_cost_usd:.2f} "
         f"projected=${budget.projected_total_cost_usd:.2f} "
-        f"completed={completed_trials}/{budget.planned_trials}"
+        f"completed={budget_completed_trials}/{budget.planned_trials}"
     )
     if budget_stop_reason:
         print(f"  Budget stop reason: {budget_stop_reason}")
     print(f"  Combined results: {combined_csv}")
     print(f"{'='*70}")
 
-    report_path = budget.write_report(completed_trials=completed_trials, stop_reason=budget_stop_reason)
+    report_path = budget.write_report(
+        completed_trials=budget_completed_trials,
+        stop_reason=budget_stop_reason,
+    )
     if report_path:
         print(f"Wrote budget report: {report_path}")
 
@@ -869,7 +885,7 @@ def run_experiment():
     print(f"\n📊 SUMMARY BY MODEL × CONDITION")
     print(f"{'Model':<20} {'Condition':<16} {'N':>4} {'Avg':>5} {'Inj%':>6} {'Tool%':>6}")
     print("-" * 60)
-    for model_config in MODELS:
+    for model_config in selected_models:
         mn = model_config["name"]
         for cond in conditions:
             cr = [r for r in all_results if r["model"] == mn and r["condition"] == cond and r["score"] >= 0]

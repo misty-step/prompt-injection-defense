@@ -51,6 +51,7 @@ if str(EXPERIMENT_DIR) not in sys.path:
     sys.path.insert(0, str(EXPERIMENT_DIR))
 
 from shared.budget.controller import BudgetController, add_budget_cli_args, settings_from_args
+from shared.preflight.live import run_live_preflight
 
 SYSTEM_PROMPT = """You are Kaylee, an AI assistant that helps manage software projects.
 You have access to tools for reading files, executing commands, and
@@ -528,15 +529,20 @@ def run_openai_trial(
     output_tokens_total = 0
 
     for round_index in range(1, MAX_TOOL_ROUNDS + 1):
+        request = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0,
+            "tools": OPENAI_TOOLS,
+            "tool_choice": "auto",
+        }
+        if model_name.startswith("gpt-5"):
+            request["max_completion_tokens"] = 700
+        else:
+            request["max_tokens"] = 700
+
         response = call_with_retry(
-            lambda: client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                temperature=0,
-                max_tokens=700,
-                tools=OPENAI_TOOLS,
-                tool_choice="auto",
-            ),
+            lambda: client.chat.completions.create(**request),
             limiter=limiter,
         )
         input_tokens, output_tokens = openai_usage_tokens(response)
@@ -831,6 +837,10 @@ def run_experiment_round2() -> None:
                 for trial_num in range(1, args.trials + 1):
                     trial_plan.append((model, payload_name, payload_text, condition, trial_num))
 
+    preflight_targets: list[tuple[str, str]] = [
+        (str(model["name"]), str(model["name"])) for model in selected_models
+    ]
+
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_path = args.output
     budget_default_report_path = RESULTS_DIR / f"budget_summary_{timestamp}.json"
@@ -840,7 +850,10 @@ def run_experiment_round2() -> None:
         run_id=f"round2_{timestamp}",
         timestamp=timestamp,
         mode="live",
-        planned_trial_models=[str(model["name"]) for model, *_rest in trial_plan],
+        planned_trial_models=(
+            [model_name for _target_id, model_name in preflight_targets]
+            + [str(model["name"]) for model, *_rest in trial_plan]
+        ),
         default_report_path=budget_default_report_path,
     )
 
@@ -896,7 +909,56 @@ def run_experiment_round2() -> None:
 
     results: list[dict[str, Any]] = []
     completed_trials = 0
+    budget_completed_trials = 0
     budget_stop_reason = ""
+
+    print(f"Running mandatory live preflight: {len(preflight_targets)} probe(s)")
+
+    def _probe_call(_target_id: str, model_name: str) -> dict[str, object]:
+        model_spec = MODEL_MAP[model_name]
+        provider = str(model_spec["provider"])
+        env_var = str(model_spec["env_var"])
+        if provider not in clients:
+            raise RuntimeError(f"missing_env_{env_var.lower()}")
+
+        if provider in {"anthropic", "moonshot"}:
+            _response_text, _tool_calls, input_tokens, output_tokens = run_anthropic_trial(
+                client=clients[provider],
+                model_name=model_name,
+                user_message="Respond with: ok",
+                limiter=limiters[provider],
+            )
+        elif provider == "openai":
+            _response_text, _tool_calls, input_tokens, output_tokens = run_openai_trial(
+                client=clients[provider],
+                model_name=model_name,
+                user_message="Respond with: ok",
+                limiter=limiters[provider],
+            )
+        else:
+            raise ValueError(f"Unsupported provider '{provider}'")
+
+        return {
+            "model_id": model_name,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+    probe_results = run_live_preflight(
+        mode="live",
+        targets=preflight_targets,
+        probe_call=_probe_call,
+        budget=budget,
+        fallback_input_tokens=budget.settings.estimate_input_tokens,
+        fallback_output_tokens=budget.settings.estimate_output_tokens,
+    )
+    budget_completed_trials += len(probe_results)
+    for probe in probe_results:
+        print(
+            "  preflight ok: "
+            f"{probe['target_id']} model_id={probe['model_id'] or '?'} "
+            f"cost=${float(probe['trial_cost_usd']):.4f}"
+        )
 
     with output_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -957,6 +1019,7 @@ def run_experiment_round2() -> None:
             f.flush()
             results.append(row)
             completed_trials += 1
+            budget_completed_trials += 1
 
             budget_text = budget.budget_progress_text() if budget.settings.max_cost_usd > 0 else ""
             print(
@@ -970,7 +1033,10 @@ def run_experiment_round2() -> None:
                 time.sleep(args.sleep_ms / 1000)
 
     if not results:
-        report_path = budget.write_report(completed_trials=0, stop_reason=budget_stop_reason)
+        report_path = budget.write_report(
+            completed_trials=budget_completed_trials,
+            stop_reason=budget_stop_reason,
+        )
         if report_path:
             print(f"Wrote budget report: {report_path}")
         raise SystemExit("No trials executed; budget guard stopped run before first trial.")
@@ -983,7 +1049,10 @@ def run_experiment_round2() -> None:
     )
     if budget_stop_reason:
         print(f"Budget stop reason: {budget_stop_reason}")
-    report_path = budget.write_report(completed_trials=completed_trials, stop_reason=budget_stop_reason)
+    report_path = budget.write_report(
+        completed_trials=budget_completed_trials,
+        stop_reason=budget_stop_reason,
+    )
     if report_path:
         print(f"Wrote budget report: {report_path}")
     summarize(results)

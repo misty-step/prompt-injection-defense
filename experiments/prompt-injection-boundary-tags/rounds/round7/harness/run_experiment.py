@@ -35,6 +35,7 @@ from shared.budget.controller import (
     add_budget_cli_args,
     settings_from_args,
 )
+from shared.preflight.live import run_live_preflight
 from shared.scoring.scorer import is_suspicious_tool_call, load_scorer_config, score_response
 
 SCORER_CONFIG_PATH = EXPERIMENT_DIR / "shared" / "scoring" / "scorer_config_v2.json"
@@ -1061,6 +1062,16 @@ def run() -> None:
                         (model_name, reasoning_budget, payload_name, payload_text, condition, trial_num)
                     )
 
+    preflight_targets: List[Tuple[str, str]] = [
+        (f"{model_name}:{reasoning_budget}", model_name)
+        for model_name, reasoning_budget in model_budget_pairs
+    ]
+    preflight_budget_by_target = {
+        f"{model_name}:{reasoning_budget}": reasoning_budget
+        for model_name, reasoning_budget in model_budget_pairs
+    }
+    preflight_budget_models = [model_name for _target_id, model_name in preflight_targets] if mode == "live" else []
+
     total = len(trial_plan)
     budget = BudgetController(
         settings=settings_from_args(args),
@@ -1068,7 +1079,9 @@ def run() -> None:
         run_id=run_id,
         timestamp=timestamp,
         mode=mode,
-        planned_trial_models=[model_name for model_name, _budget, *_rest in trial_plan],
+        planned_trial_models=(
+            preflight_budget_models + [model_name for model_name, _budget, *_rest in trial_plan]
+        ),
         default_report_path=budget_default_report_path,
     )
 
@@ -1102,7 +1115,36 @@ def run() -> None:
 
     rows: List[Dict[str, object]] = []
     completed_trials = 0
+    budget_completed_trials = 0
     budget_stop_reason = ""
+
+    if mode == "live":
+        print(f"Running mandatory live preflight: {len(preflight_targets)} probe(s)")
+
+        def _probe_call(target_id: str, model_name: str) -> Dict[str, object]:
+            reasoning_budget = preflight_budget_by_target[target_id]
+            return call_live_model(
+                model_name=model_name,
+                system_prompt="You are a test assistant. Reply with one short word.",
+                user_message="Respond with: ok",
+                reasoning_budget=reasoning_budget,
+            )
+
+        probe_results = run_live_preflight(
+            mode=mode,
+            targets=preflight_targets,
+            probe_call=_probe_call,
+            budget=budget,
+            fallback_input_tokens=budget.settings.estimate_input_tokens,
+            fallback_output_tokens=budget.settings.estimate_output_tokens,
+        )
+        budget_completed_trials += len(probe_results)
+        for probe in probe_results:
+            print(
+                "  preflight ok: "
+                f"{probe['target_id']} model_id={probe['model_id'] or '?'} "
+                f"cost=${float(probe['trial_cost_usd']):.4f}"
+            )
 
     for trial_id, (
         model_name,
@@ -1209,6 +1251,7 @@ def run() -> None:
         )
         rows.append(row)
         completed_trials += 1
+        budget_completed_trials += 1
 
         budget.record_trial(model_name, input_tokens, output_tokens)
 
@@ -1246,7 +1289,10 @@ def run() -> None:
     if budget_stop_reason:
         print(f"Budget stop reason: {budget_stop_reason}")
 
-    report_path = budget.write_report(completed_trials=completed_trials, stop_reason=budget_stop_reason)
+    report_path = budget.write_report(
+        completed_trials=budget_completed_trials,
+        stop_reason=budget_stop_reason,
+    )
     if report_path:
         print(f"Wrote budget report: {report_path}")
 

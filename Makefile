@@ -22,6 +22,7 @@ check:
 		experiments/prompt-injection-boundary-tags/rounds/round2b/analysis/analyze.py \
 		experiments/prompt-injection-boundary-tags/shared/scoring/scorer.py \
 		experiments/prompt-injection-boundary-tags/shared/budget/controller.py \
+		experiments/prompt-injection-boundary-tags/shared/preflight/live.py \
 		experiments/prompt-injection-boundary-tags/rounds/round3/harness/run_experiment.py \
 		experiments/prompt-injection-boundary-tags/rounds/round3/analysis/analyze.py \
 		experiments/prompt-injection-boundary-tags/rounds/round4/harness/run_experiment.py \

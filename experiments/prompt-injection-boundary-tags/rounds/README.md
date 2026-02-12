@@ -30,3 +30,10 @@ Rounds with live model calls expose shared budget flags:
 - `--budget-guard-input-tokens`, `--budget-guard-output-tokens`
 
 Current coverage: `round2`, `round2b`, `round3`, `round4`, `round5`, `round7`.
+
+## Mandatory Live Preflight
+
+- Live runs now enforce a non-optional preflight probe before the full trial matrix.
+- Preflight sends one minimal request per configured live model path (and per reasoning-budget path where applicable).
+- If any probe fails (for example invalid model ID, missing key, provider error), the harness exits before trial `1/N`.
+- Preflight cost is recorded in the shared budget controller and included in budget reports.
