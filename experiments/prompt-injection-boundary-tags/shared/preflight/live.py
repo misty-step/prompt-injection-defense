@@ -40,19 +40,20 @@ def run_live_preflight(
         if budget is not None:
             before_message = budget.before_trial_message(model_name)
             if before_message:
-                raise SystemExit(f"Preflight budget stop before {target_id}: {before_message}")
+                settings = getattr(budget, "settings", None)
+                budget_mode = str(getattr(settings, "mode", "hard") or "hard")
+                if budget_mode != "warn":
+                    raise SystemExit(
+                        f"Preflight budget stop before {target_id} ({model_name}): {before_message}"
+                    )
 
         try:
             probe_result = probe_call(target_id, model_name)
             input_tokens = int(probe_result.get("input_tokens", 0) or 0)
             output_tokens = int(probe_result.get("output_tokens", 0) or 0)
-            if (
-                input_tokens <= 0
-                and output_tokens <= 0
-                and fallback_input_tokens > 0
-                and fallback_output_tokens > 0
-            ):
+            if input_tokens <= 0 and fallback_input_tokens > 0:
                 input_tokens = fallback_input_tokens
+            if output_tokens <= 0 and fallback_output_tokens > 0:
                 output_tokens = fallback_output_tokens
 
             trial_cost_usd = 0.0

@@ -79,6 +79,45 @@ class LivePreflightTests(unittest.TestCase):
         self.assertEqual(budget.recorded, [("m1", 123, 45), ("m2", 123, 45)])
         self.assertEqual(results[0]["model_id"], "id-a")
 
+    def test_success_applies_fallback_tokens_per_side(self) -> None:
+        budget = FakeBudget()
+
+        def probe_call(target_id: str, _model_name: str):
+            if target_id == "a":
+                return {"model_id": f"id-{target_id}", "input_tokens": 0, "output_tokens": 9}
+            return {"model_id": f"id-{target_id}", "input_tokens": 8, "output_tokens": 0}
+
+        results = live_preflight.run_live_preflight(
+            mode="live",
+            targets=[("a", "m1"), ("b", "m2")],
+            probe_call=probe_call,
+            budget=budget,
+            fallback_input_tokens=123,
+            fallback_output_tokens=45,
+        )
+        self.assertEqual(len(results), 2)
+        self.assertEqual(budget.recorded, [("m1", 123, 9), ("m2", 8, 45)])
+        self.assertEqual(results[0]["model_id"], "id-a")
+
+    def test_budget_stop_aborts_preflight(self) -> None:
+        budget = FakeBudget()
+        budget.stop_for.add("m1")
+
+        def probe_call(_target_id: str, _model_name: str):
+            return {"model_id": "ok", "input_tokens": 10, "output_tokens": 1}
+
+        with self.assertRaises(SystemExit) as ctx:
+            live_preflight.run_live_preflight(
+                mode="live",
+                targets=[("a", "m1")],
+                probe_call=probe_call,
+                budget=budget,
+                fallback_input_tokens=100,
+                fallback_output_tokens=20,
+            )
+        self.assertIn("blocked m1", str(ctx.exception))
+        self.assertEqual(budget.recorded, [])
+
     def test_failure_aborts_before_trial_matrix(self) -> None:
         budget = FakeBudget()
 
