@@ -670,7 +670,7 @@ def run_experiment():
     )
 
     print(f"\n{'='*70}")
-    print(f"🧪 ROUND 2: Realistic Agent Prompt Injection Defense Experiment")
+    print("🧪 ROUND 2: Realistic Agent Prompt Injection Defense Experiment")
     print(f"{'='*70}")
     print(f"  Payloads: {len(payload_items)}")
     print(f"  Conditions: {len(conditions)}")
@@ -862,7 +862,7 @@ def run_experiment():
             writer.writerows(all_results)
 
     print(f"\n{'='*70}")
-    print(f"✅ Experiment complete!")
+    print("✅ Experiment complete!")
     print(f"  Total trials: {len(all_results)}")
     print(
         f"  Budget summary: spent=${budget.spent_cost_usd:.2f} "
@@ -882,7 +882,7 @@ def run_experiment():
         print(f"Wrote budget report: {report_path}")
 
     # Final summary table
-    print(f"\n📊 SUMMARY BY MODEL × CONDITION")
+    print("\n📊 SUMMARY BY MODEL x CONDITION")
     print(f"{'Model':<20} {'Condition':<16} {'N':>4} {'Avg':>5} {'Inj%':>6} {'Tool%':>6}")
     print("-" * 60)
     for model_config in selected_models:

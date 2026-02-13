@@ -929,12 +929,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use live model APIs. Default is simulation mode.",
     )
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Force simulation mode (default).",
+    )
     add_budget_cli_args(parser)
     return parser.parse_args()
 
 
 def run() -> None:
     args = parse_args()
+
+    if args.live and args.simulate:
+        raise SystemExit("Choose one mode: --live or --simulate.")
 
     mode = "live" if args.live else "simulate"
 
