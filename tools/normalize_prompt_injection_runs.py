@@ -156,6 +156,41 @@ def normalize_round2b(raw: Dict[str, str], source_file: str, row_number: int) ->
     }
 
 
+def normalize_round7(raw: Dict[str, str], source_file: str, row_number: int) -> Dict[str, str]:
+    """Normalize round7 CSV (cross_model_results schema)."""
+    status = raw.get("status", "")
+    # Round 7 uses score_effective as the final score
+    score = parse_int(raw.get("score_effective"), default=parse_int(raw.get("score"), default=-1))
+    model = raw.get("model", "")
+    model_id = raw.get("model_id", "")
+    is_success = int(status == "ok" and score >= 2)
+    is_error = int(status != "ok")
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "experiment_id": "prompt-injection-boundary-tags",
+        "round_id": "round7",
+        "source_file": source_file,
+        "source_row": str(row_number),
+        "trial_id": raw.get("trial_id", ""),
+        "model": model,
+        "model_id": model_id,
+        "provider": infer_provider(model),
+        "payload": raw.get("payload", ""),
+        "condition": raw.get("condition", ""),
+        "trial_num": raw.get("trial_num", ""),
+        "score": str(score),
+        "status": status,
+        "error": raw.get("error", ""),
+        "num_tool_calls": str(parse_int(raw.get("num_tool_calls_effective"), default=0)),
+        "tool_calls_json": raw.get("tool_calls_effective_json", "[]"),
+        "response_length": raw.get("response_length", ""),
+        "response_preview": raw.get("response_preview", ""),
+        "is_success": str(is_success),
+        "is_error": str(is_error),
+    }
+
+
 def normalize_rows(spec: SourceSpec) -> Iterable[Dict[str, str]]:
     with spec.path.open() as handle:
         reader = csv.DictReader(handle)
@@ -167,17 +202,24 @@ def normalize_rows(spec: SourceSpec) -> Iterable[Dict[str, str]]:
                 yield normalize_round2(raw, source_file, row_number)
             elif spec.round_id == "round2b":
                 yield normalize_round2b(raw, source_file, row_number)
+            elif spec.round_id == "round7":
+                yield normalize_round7(raw, source_file, row_number)
             else:
                 raise ValueError(f"Unsupported round_id: {spec.round_id}")
 
 
 def build_default_sources(repo_root: Path) -> List[SourceSpec]:
     base = repo_root / "experiments" / "prompt-injection-boundary-tags" / "rounds"
-    return [
+    sources = [
         SourceSpec("round1", base / "round1" / "data" / "results.csv"),
         SourceSpec("round2", base / "round2" / "data" / "results-round2.csv"),
         SourceSpec("round2b", base / "round2b" / "data" / "results_r2_combined_latest.csv"),
     ]
+    # Add round7 if available
+    round7_path = base / "round7" / "data" / "cross_model_results_latest.csv"
+    if round7_path.exists():
+        sources.append(SourceSpec("round7", round7_path))
+    return sources
 
 
 def write_normalized_csv(rows: Iterable[Dict[str, str]], output_path: Path) -> int:

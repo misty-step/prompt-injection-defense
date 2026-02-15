@@ -47,6 +47,7 @@ smoke-analyze:
 	$(PYTHON) analyze_r2.py
 	$(PYTHON) experiments/prompt-injection-boundary-tags/analyze.py
 	$(PYTHON) tools/analyze_prompt_injection_runs.py
+	$(PYTHON) tools/analyze_prompt_injection_with_ci.py
 
 ci-smoke: check check-wrappers test smoke-analyze
 
