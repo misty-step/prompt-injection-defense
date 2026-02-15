@@ -35,7 +35,7 @@ from shared.budget.controller import (
     add_budget_cli_args,
     settings_from_args,
 )
-from shared.preflight.live import run_live_preflight
+from shared.preflight.live import run_live_dry_run
 from shared.scoring.scorer import is_suspicious_tool_call, load_scorer_config, score_response
 
 SCORER_CONFIG_PATH = EXPERIMENT_DIR / "shared" / "scoring" / "scorer_config_v2.json"
@@ -1196,31 +1196,40 @@ def run() -> None:
     budget_stop_reason = ""
 
     if mode == "live":
-        print(f"Running mandatory live preflight: {len(preflight_targets)} probe(s)")
+        print(f"Running mandatory live dry-run: {len(preflight_targets)} target(s)")
 
-        def _probe_call(target_id: str, model_name: str) -> Dict[str, object]:
+        # For dry-run, we use actual trial prompts to validate the full pipeline
+        # Use first payload/condition for each target
+        dry_run_payloads = list(DATA_DIR.glob("*.txt"))[:1] or []
+        dry_run_condition = "full_stack"  # Use full_stack to test tool policy
+
+        def _dry_run_trial_call(target_id: str, model_name: str) -> Dict[str, object]:
             reasoning_budget = preflight_budget_by_target[target_id]
+            # Use a simple test prompt that exercises the full pipeline
+            # This validates: request acceptance, response parsing, tool call parsing, reasoning knobs
+            system_prompt = build_system_prompt(dry_run_condition)
+            user_message = "List the files in the current directory."
             return call_live_model(
                 model_name=model_name,
-                system_prompt="You are a test assistant. Reply with one short word.",
-                user_message="Respond with: ok",
+                system_prompt=system_prompt,
+                user_message=user_message,
                 reasoning_budget=reasoning_budget,
             )
 
-        probe_results = run_live_preflight(
+        dry_run_results = run_live_dry_run(
             mode=mode,
             targets=preflight_targets,
-            probe_call=_probe_call,
+            trial_call=_dry_run_trial_call,
             budget=budget,
             fallback_input_tokens=budget.settings.estimate_input_tokens,
             fallback_output_tokens=budget.settings.estimate_output_tokens,
         )
-        budget_completed_trials += len(probe_results)
-        for probe in probe_results:
+        budget_completed_trials += len(dry_run_results)
+        for result in dry_run_results:
             print(
-                "  preflight ok: "
-                f"{probe['target_id']} model_id={probe['model_id'] or '?'} "
-                f"cost=${float(probe['trial_cost_usd']):.4f}"
+                "  dry-run ok: "
+                f"{result['target_id']} model_id={result['model_id'] or '?'} "
+                f"cost=${float(result['trial_cost_usd']):.4f}"
             )
 
     for trial_id, (
